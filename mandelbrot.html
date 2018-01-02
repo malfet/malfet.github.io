@@ -1,0 +1,136 @@
+<html>
+<head>
+  <title>Mandelbrot set</title>
+</head>
+<script type="x-shader/x-vertex" id="passThruVS">
+attribute vec2 coord;
+varying vec2 pos;
+void main(void) {
+  pos = coord;
+  gl_Position = vec4(coord, 0, 1.0);
+}
+</script>
+
+<script type="x-shader/x-fragment" id="mandelbrotFS">
+precision highp float;
+varying vec2 pos;
+float sqrdistance(vec2 val) {
+return val.x*val.x+val.y*val.y;
+}
+vec2 mandelbrotStep(vec2 z, vec2 c) {
+  return vec2(z.x*z.x-z.y*z.y+c.x, 2.0*z.x*z.y + c.y);
+}
+void main(void) {
+  vec2 z= vec2(0, 0);
+  vec2 c = vec2(pos.x*2.0, pos.y*2.0);
+  for(int cnt = 0; cnt < 256; cnt++) {
+    if (sqrdistance(z) >= 4.0) {
+      gl_FragColor = vec4(abs(.5*z.x), float(cnt)/256.0, abs(.5*z.y), 1);
+      return;
+    }
+    z = mandelbrotStep(z, c);
+  }
+  gl_FragColor = vec4(0, 0, 0, 1.0);
+}
+</script>
+
+<script type="text/javascript">
+var glCtx = null;
+
+function compileShader(type, source) {
+  if (!glCtx) return null;
+  var rc = glCtx.createShader(type);
+  glCtx.shaderSource(rc, source);
+  glCtx.compileShader(rc);
+  if (!glCtx.getShaderParameter(rc, glCtx.COMPILE_STATUS)) {
+    alert(glCtx.getShaderInfoLog(rc) + ' in ' + source);
+    return null;
+  }
+  return rc;
+}
+
+function compileShaderById(id) {
+  const element = document.getElementById(id);
+  if (element == null) {
+    alert('Can not find shader by element id ' + id);
+    return null;
+  }
+  const source = element.innerHTML;
+  if (element.type === 'x-shader/x-vertex') {
+    return compileShader(glCtx.VERTEX_SHADER, source);
+  }
+  if (element.type === 'x-shader/x-fragment') {
+    return compileShader(glCtx.FRAGMENT_SHADER, source);
+  }
+  alert('Unknown shader type ' + element.type);
+  return null;
+}
+
+function linkProgram(shaders) {
+  if (!glCtx) return null;
+  var rc = glCtx.createProgram();
+  for(cnt = 0; cnt < shaders.length; cnt++) {
+    if (!shaders[cnt]) {
+      alert('Can not link program with null shaders');
+      return null;
+    }
+    glCtx.attachShader(rc, shaders[cnt]);
+  }
+  glCtx.linkProgram(rc);
+  if (!glCtx.getProgramParameter(rc, glCtx.LINK_STATUS)) {
+    alert(glCtx.getProgramInfoLog(rc));
+    return null;
+  }
+  return rc;
+}
+
+function initGL() {
+  if (glCtx != null) return;
+  var canvas = document.getElementById('canvas');
+  if (canvas == null) {
+    alert('Can not find canvas');
+    return;
+  }
+  glCtx = canvas.getContext('webgl');
+  if (glCtx == null) {
+    alert('Can not get WebGL context...');
+    return;
+  }
+  glCtx.viewport(0, 0, canvas.clientWidth, canvas.clientHeight);
+  glCtx.clearColor(0, 0, 0, 1.0);
+  glCtx.clear(glCtx.COLOR_BUFFER_BIT);
+}
+
+function drawTriangleStrip(arr) {
+  if (!glCtx) return;
+  var prog = glCtx.getParameter(glCtx.CURRENT_PROGRAM);
+  const coordIdx = glCtx.getAttribLocation(prog, 'coord');
+
+  var buf = glCtx.createBuffer();
+  glCtx.bindBuffer(glCtx.ARRAY_BUFFER, buf);
+  glCtx.bufferData(glCtx.ARRAY_BUFFER, new Float32Array(arr), glCtx.STATIC_DRAW);
+
+  glCtx.enableVertexAttribArray(coordIdx);
+  glCtx.vertexAttribPointer(coordIdx, 2, glCtx.FLOAT, false, 0, 0);
+
+  glCtx.drawArrays(glCtx.TRIANGLE_STRIP, 0, arr.length/2);
+  glCtx.deleteBuffer(buf);
+}
+function drawQuad(x0, y0, x1, y1) {
+  drawTriangleStrip([x0, y0, x1, y0, x0, y1, x1, y1]);
+}
+
+function startRendering() {
+  initGL();
+
+  prog = linkProgram(['passThruVS', 'mandelbrotFS'].map(compileShaderById));
+  glCtx.useProgram(prog);
+  drawQuad(-1, -1, 1, 1);
+}
+
+</script>
+<body onLoad="startRendering();">
+  <H1>Mandelbrot set rendered in fragment shader</H1>
+  <canvas id="canvas" width="1024px" height="1024px"></canvas>
+</body>
+</html>
