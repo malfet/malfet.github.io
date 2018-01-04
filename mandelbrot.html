@@ -14,6 +14,7 @@ void main(void) {
 <script type="x-shader/x-fragment" id="mandelbrotFS">
 precision highp float;
 varying vec2 pos;
+uniform vec2 topLeft, bottomRight;
 float sqrdistance(vec2 val) {
 return val.x*val.x+val.y*val.y;
 }
@@ -22,7 +23,8 @@ vec2 mandelbrotStep(vec2 z, vec2 c) {
 }
 void main(void) {
   vec2 z= vec2(0, 0);
-  vec2 c = vec2(pos.x*2.0, pos.y*2.0);
+  vec2 dim = bottomRight-topLeft;
+  vec2 c = vec2(topLeft.x + dim.x*.5*(pos.x+1.0), bottomRight.y - dim.y*.5*(pos.y+1.0));
   for(int cnt = 0; cnt < 256; cnt++) {
     if (sqrdistance(z) >= 4.0) {
       gl_FragColor = vec4(abs(.5*z.x), float(cnt)/256.0, abs(.5*z.y), 1);
@@ -31,6 +33,13 @@ void main(void) {
     z = mandelbrotStep(z, c);
   }
   gl_FragColor = vec4(0, 0, 0, 1.0);
+}
+</script>
+
+<script type="x-shader/x-fragment" id="solidColorFS">
+uniform vec4 color;
+void main(void) {
+  gl_FragColor = color;
 }
 </script>
 
@@ -86,7 +95,7 @@ function linkProgram(shaders) {
 
 function initGL() {
   if (glCtx != null) return;
-  var canvas = document.getElementById('canvas');
+  const canvas = document.getElementById('canvas');
   if (canvas == null) {
     alert('Can not find canvas');
     return;
@@ -116,21 +125,57 @@ function drawTriangleStrip(arr) {
   glCtx.drawArrays(glCtx.TRIANGLE_STRIP, 0, arr.length/2);
   glCtx.deleteBuffer(buf);
 }
+
 function drawQuad(x0, y0, x1, y1) {
   drawTriangleStrip([x0, y0, x1, y0, x0, y1, x1, y1]);
 }
 
+function renderMandel(sx,sy, ex,ey) {
+  var prog = glCtx.getParameter(glCtx.CURRENT_PROGRAM);
+  const tlIdx = glCtx.getUniformLocation(prog, "topLeft");
+  const brIdx = glCtx.getUniformLocation(prog, "bottomRight");
+  glCtx.uniform2f(tlIdx, sx, sy);
+  glCtx.uniform2f(brIdx, ex, ey);
+  drawQuad(-1, -1, 1, 1);
+}
 function startRendering() {
   initGL();
+  const canvas = document.getElementById('canvas');
+  var start = {x:-2.0, y: -2.0};
+  var end = {x:2.0, y:2.0};
+  const aspect = (end.y-start.y)/(end.x-start.x);
+  var downcoord = null;
+  function offset2coord(evt) {return {x: start.x + (end.x-start.x)*evt.offsetX/canvas.clientWidth, y: start.y + (end.y-start.y)*evt.offsetY/canvas.clientHeight};};
+  canvas.addEventListener("mousedown", (event) => {downcoord = offset2coord(event);});
+  canvas.addEventListener("mouseup", (event) => {
+    if (downcoord == null) return;
+    const upcoord = offset2coord(event);
+    const dim = {x:upcoord.x - downcoord.x, y: upcoord.y - downcoord.y};
+    if (dim.x <= 0 || dim.y <= 0) {
+      downcoord = null;
+      return;
+    }
+
+    // Maintain aspect ratio
+    if (dim.x*aspect > dim.y) {
+      upcoord.y = downcoord.y + dim.x*aspect;
+    } else if (dim.y/aspect > dim.x){
+      upcoord.x = downcoord.x + dim.y/aspect;
+    }
+
+    start = downcoord;
+    end = upcoord;
+    renderMandel(start.x, start.y, end.x, end.y);
+  });
 
   prog = linkProgram(['passThruVS', 'mandelbrotFS'].map(compileShaderById));
   glCtx.useProgram(prog);
-  drawQuad(-1, -1, 1, 1);
+  renderMandel(start.x, start.y, end.x, end.y);
 }
 
 </script>
 <body onLoad="startRendering();">
-  <H1>Mandelbrot set rendered in fragment shader</H1>
+  <H1>Mandelbrot Set rendered in fragment shader</H1>
   <canvas id="canvas" width="1024px" height="1024px"></canvas>
 </body>
 </html>
