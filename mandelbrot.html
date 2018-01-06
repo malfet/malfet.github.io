@@ -44,108 +44,131 @@ void main(void) {
 </script>
 
 <script type="text/javascript">
-var glCtx = null;
 
-function compileShader(type, source) {
-  if (!glCtx) return null;
-  var rc = glCtx.createShader(type);
-  glCtx.shaderSource(rc, source);
-  glCtx.compileShader(rc);
-  if (!glCtx.getShaderParameter(rc, glCtx.COMPILE_STATUS)) {
-    alert(glCtx.getShaderInfoLog(rc) + ' in ' + source);
-    return null;
+class GLContext {
+  constructor(canvas) {
+    if (canvas == null)
+      throw 'Can not find canvas';
+    const ctx = canvas.getContext('webgl');
+    if (ctx == null)
+      throw 'Can not get WebGL context...';
+    ctx.viewport(0, 0, canvas.clientWidth, canvas.clientHeight);
+    ctx.clearColor(0, 0, 0, 1.0);
+    ctx.clear(ctx.COLOR_BUFFER_BIT);
+    this._ctx = ctx;
+    this.PRIMITIVES = {
+      POINTS: ctx.POINTS,
+      LINE_STRIP: ctx.LINE_STRIP,
+      LINES: ctx.LINES,
+      TRIANGLE_STRIP: ctx.TRIANGLE_STRIP,
+      TRIANGLES: ctx.TRIANGLES,
+    };
   }
-  return rc;
-}
 
-function compileShaderById(id) {
-  const element = document.getElementById(id);
-  if (element == null) {
-    alert('Can not find shader by element id ' + id);
-    return null;
+  getGLContext() {
+    if (!this._ctx) throw 'Missing context';
+    return this._ctx;
   }
-  const source = element.innerHTML;
-  if (element.type === 'x-shader/x-vertex') {
-    return compileShader(glCtx.VERTEX_SHADER, source);
-  }
-  if (element.type === 'x-shader/x-fragment') {
-    return compileShader(glCtx.FRAGMENT_SHADER, source);
-  }
-  alert('Unknown shader type ' + element.type);
-  return null;
-}
 
-function linkProgram(shaders) {
-  if (!glCtx) return null;
-  var rc = glCtx.createProgram();
-  for(cnt = 0; cnt < shaders.length; cnt++) {
-    if (!shaders[cnt]) {
-      alert('Can not link program with null shaders');
-      return null;
+  compileShader(type, source) {
+    const glCtx = this.getGLContext();
+    var rc = glCtx.createShader(type);
+    glCtx.shaderSource(rc, source);
+    glCtx.compileShader(rc);
+    if (!glCtx.getShaderParameter(rc, glCtx.COMPILE_STATUS)) {
+      throw glCtx.getShaderInfoLog(rc) + ' in ' + source;
     }
-    glCtx.attachShader(rc, shaders[cnt]);
+    return rc;
   }
-  glCtx.linkProgram(rc);
-  if (!glCtx.getProgramParameter(rc, glCtx.LINK_STATUS)) {
-    alert(glCtx.getProgramInfoLog(rc));
-    return null;
+
+  compileShaderById(id) {
+    const glCtx = this.getGLContext();
+    const element = document.getElementById(id);
+    if (element == null) {
+      throw 'Can not find shader by element id ' + id;
+    }
+    const source = element.innerHTML;
+    if (element.type === 'x-shader/x-vertex') {
+      return this.compileShader(glCtx.VERTEX_SHADER, source);
+    }
+    if (element.type === 'x-shader/x-fragment') {
+      return this.compileShader(glCtx.FRAGMENT_SHADER, source);
+    }
+    throw 'Unknown shader type ' + element.type;
   }
-  return rc;
-}
 
-function initGL() {
-  if (glCtx != null) return;
-  const canvas = document.getElementById('canvas');
-  if (canvas == null) {
-    alert('Can not find canvas');
-    return;
+  linkProgram(shaders) {
+    const glCtx = this.getGLContext();
+    const rc = glCtx.createProgram();
+    for(var cnt = 0; cnt < shaders.length; cnt++) {
+      if (!shaders[cnt]) {
+        throw 'Can not link program with null shaders';
+      }
+      glCtx.attachShader(rc, shaders[cnt]);
+    }
+    glCtx.linkProgram(rc);
+    if (!glCtx.getProgramParameter(rc, glCtx.LINK_STATUS)) {
+      throw glCtx.getProgramInfoLog(rc);
+    }
+    return rc;
   }
-  glCtx = canvas.getContext('webgl');
-  if (glCtx == null) {
-    alert('Can not get WebGL context...');
-    return;
+
+  setUniform2f(name, a, b) {
+    const glCtx = this.getGLContext();
+    const prog = glCtx.getParameter(glCtx.CURRENT_PROGRAM);
+    const idx = glCtx.getUniformLocation(prog, name);
+    glCtx.uniform2f(idx, a, b);
   }
-  glCtx.viewport(0, 0, canvas.clientWidth, canvas.clientHeight);
-  glCtx.clearColor(0, 0, 0, 1.0);
-  glCtx.clear(glCtx.COLOR_BUFFER_BIT);
-}
 
-function drawTriangleStrip(arr) {
-  if (!glCtx) return;
-  var prog = glCtx.getParameter(glCtx.CURRENT_PROGRAM);
-  const coordIdx = glCtx.getAttribLocation(prog, 'coord');
+  draw2DArray(type, name, arr) {
+    const glCtx = this.getGLContext();
+    const prog = glCtx.getParameter(glCtx.CURRENT_PROGRAM);
+    const idx = glCtx.getAttribLocation(prog, name);
 
-  var buf = glCtx.createBuffer();
-  glCtx.bindBuffer(glCtx.ARRAY_BUFFER, buf);
-  glCtx.bufferData(glCtx.ARRAY_BUFFER, new Float32Array(arr), glCtx.STATIC_DRAW);
+    var buf = glCtx.createBuffer();
+    glCtx.bindBuffer(glCtx.ARRAY_BUFFER, buf);
+    glCtx.bufferData(glCtx.ARRAY_BUFFER, new Float32Array(arr), glCtx.STATIC_DRAW);
 
-  glCtx.enableVertexAttribArray(coordIdx);
-  glCtx.vertexAttribPointer(coordIdx, 2, glCtx.FLOAT, false, 0, 0);
+    glCtx.enableVertexAttribArray(idx);
+    glCtx.vertexAttribPointer(idx, 2, glCtx.FLOAT, false, 0, 0);
 
-  glCtx.drawArrays(glCtx.TRIANGLE_STRIP, 0, arr.length/2);
-  glCtx.deleteBuffer(buf);
+    glCtx.drawArrays(type, 0, arr.length/2);
+    glCtx.deleteBuffer(buf);
+  }
 }
 
 function drawQuad(x0, y0, x1, y1) {
-  drawTriangleStrip([x0, y0, x1, y0, x0, y1, x1, y1]);
+  ctx.draw2DArray(ctx.PRIMITIVES.TRIANGLE_STRIP, 'coord', [x0, y0, x1, y0, x0, y1, x1, y1]);
 }
 
 function renderMandel(sx,sy, ex,ey) {
-  var prog = glCtx.getParameter(glCtx.CURRENT_PROGRAM);
-  const tlIdx = glCtx.getUniformLocation(prog, "topLeft");
-  const brIdx = glCtx.getUniformLocation(prog, "bottomRight");
-  glCtx.uniform2f(tlIdx, sx, sy);
-  glCtx.uniform2f(brIdx, ex, ey);
+  ctx.setUniform2f('topLeft', sx, sy);
+  ctx.setUniform2f('bottomRight', ex, ey);
   drawQuad(-1, -1, 1, 1);
 }
-function startRendering() {
-  initGL();
+
+var ctx = null;
+function configureRenderer() {
   const canvas = document.getElementById('canvas');
+  try {
+    ctx = new GLContext(canvas);
+    const prog = ctx.linkProgram(['passThruVS', 'mandelbrotFS'].map(_ => ctx.compileShaderById(_)));
+    ctx.getGLContext().useProgram(prog);
+  } catch (e) {
+    alert('Inialization failed: ' + e);
+    return;
+  }
+
   var start = {x:-2.0, y: -2.0};
   var end = {x:2.0, y:2.0};
   const aspect = (end.y-start.y)/(end.x-start.x);
   var downcoord = null;
-  function offset2coord(evt) {return {x: start.x + (end.x-start.x)*evt.offsetX/canvas.clientWidth, y: start.y + (end.y-start.y)*evt.offsetY/canvas.clientHeight};};
+  function offset2coord(evt) {
+    return {
+      x: start.x + (end.x-start.x)*evt.offsetX/canvas.clientWidth,
+      y: start.y + (end.y-start.y)*evt.offsetY/canvas.clientHeight
+    };
+  }
   canvas.addEventListener("mousedown", (event) => {downcoord = offset2coord(event);});
   canvas.addEventListener("mouseup", (event) => {
     if (downcoord == null) return;
@@ -168,13 +191,11 @@ function startRendering() {
     renderMandel(start.x, start.y, end.x, end.y);
   });
 
-  prog = linkProgram(['passThruVS', 'mandelbrotFS'].map(compileShaderById));
-  glCtx.useProgram(prog);
   renderMandel(start.x, start.y, end.x, end.y);
 }
 
 </script>
-<body onLoad="startRendering();">
+<body onLoad="configureRenderer();">
   <H1>Mandelbrot Set rendered in fragment shader</H1>
   <canvas id="canvas" width="1024px" height="1024px"></canvas>
 </body>
