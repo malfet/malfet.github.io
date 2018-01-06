@@ -137,61 +137,67 @@ class GLContext {
   }
 }
 
-function drawQuad(x0, y0, x1, y1) {
-  ctx.draw2DArray(ctx.PRIMITIVES.TRIANGLE_STRIP, 'coord', [x0, y0, x1, y0, x0, y1, x1, y1]);
+class Point {
+  constructor(x, y) {
+    this.x = x; this.y = y;
+  }
+  sub(p) { return new Point(this.x-p.x, this.y-p.y); }
+  add(p) { return new Point(this.x+p.x, this.y+p.y); }
+  mul(a) { return new Point(a*this.x, a*this.y); }
 }
 
-function renderMandel(sx,sy, ex,ey) {
-  ctx.setUniform2f('topLeft', sx, sy);
-  ctx.setUniform2f('bottomRight', ex, ey);
-  drawQuad(-1, -1, 1, 1);
+class ZoomRenderer {
+  constructor(canvas) {
+    const ctx = new GLContext(canvas);
+    const prog = ctx.linkProgram(['passThruVS', 'mandelbrotFS'].map(_ => ctx.compileShaderById(_)));
+    canvas.addEventListener('click', (event) => {
+      const clickTime = Date.now();
+      if (clickTime - this._prevClickTime > 300) {
+        this._prevClickTime = clickTime;
+        return;
+      }
+      this._scale *= .5;
+      this._center = this.canvas2rendercoord(event.offsetX, event.offsetY);
+      this._prevClickTime = 0;
+      this.render();
+    });
+    ctx.getGLContext().useProgram(prog);
+    this._prevClickTime = 0;
+    this._ctx = ctx;
+    this._canvasDim = new Point(canvas.clientWidth, canvas.clientHeight);
+    this._scale = 4.0/Math.min(canvas.clientWidth, canvas.clientHeight);
+    this._center = new Point(0.0, 0.0);
+    this._zoom = 1.0;
+  }
+  canvas2rendercoord(x, y) {
+    const start = this._center.sub(this._canvasDim.mul(.5*this._scale));
+    return start.add(new Point(x,y).mul(this._scale));
+  }
+  drawQuad(x0, y0, x1, y1) {
+    this._ctx.draw2DArray(this._ctx.PRIMITIVES.TRIANGLE_STRIP, 'coord', [x0, y0, x1, y0, x0, y1, x1, y1]);
+  }
+  render() {
+    const topLeft = this.canvas2rendercoord(0,0);
+    const bottomRight = this.canvas2rendercoord(this._canvasDim.x, this._canvasDim.y);
+    const ctx = this._ctx;
+    ctx.setUniform2f('topLeft', topLeft.x, topLeft.y);
+    ctx.setUniform2f('bottomRight', bottomRight.x, bottomRight.y);
+    this.drawQuad(-1,-1, 1, 1);
+  }
 }
 
-var ctx = null;
+var renderer = null;
 function configureRenderer() {
   const canvas = document.getElementById('canvas');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
   try {
-    ctx = new GLContext(canvas);
-    const prog = ctx.linkProgram(['passThruVS', 'mandelbrotFS'].map(_ => ctx.compileShaderById(_)));
-    ctx.getGLContext().useProgram(prog);
+    renderer = new ZoomRenderer(canvas);
   } catch (e) {
     alert('Inialization failed: ' + e);
     return;
   }
-
-  var start = {x:-2.0, y: -2.0};
-  var end = {x:2.0, y:2.0};
-  const aspect = (end.y-start.y)/(end.x-start.x);
-  var downcoord = null;
-  function offset2coord(evt) {
-    return {
-      x: start.x + (end.x-start.x)*evt.offsetX/canvas.clientWidth,
-      y: start.y + (end.y-start.y)*evt.offsetY/canvas.clientHeight
-    };
-  }
-  canvas.addEventListener("mousedown", (event) => {downcoord = offset2coord(event);});
-  canvas.addEventListener("mouseup", (event) => {
-    if (downcoord == null) return;
-    const upcoord = offset2coord(event);
-    const dim = {x:upcoord.x - downcoord.x, y: upcoord.y - downcoord.y};
-    if (dim.x <= 0 || dim.y <= 0) {
-      downcoord = null;
-      return;
-    }
-
-    // Maintain aspect ratio
-    if (dim.x*aspect > dim.y) {
-      upcoord.y = downcoord.y + dim.x*aspect;
-    } else if (dim.y/aspect > dim.x){
-      upcoord.x = downcoord.x + dim.y/aspect;
-    }
-
-    start = downcoord;
-    end = upcoord;
-    renderMandel(start.x, start.y, end.x, end.y);
-  });
-
-  renderMandel(start.x, start.y, end.x, end.y);
+  renderer.render();
 }
 
 </script>
