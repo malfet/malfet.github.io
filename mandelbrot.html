@@ -138,9 +138,7 @@ class GLContext {
 }
 
 class Point {
-  constructor(x, y) {
-    this.x = x; this.y = y;
-  }
+  constructor(x, y) { this.x = x; this.y = y; }
   sub(p) { return new Point(this.x-p.x, this.y-p.y); }
   add(p) { return new Point(this.x+p.x, this.y+p.y); }
   mul(a) { return new Point(a*this.x, a*this.y); }
@@ -152,33 +150,57 @@ class ZoomRenderer {
     const prog = ctx.linkProgram(['passThruVS', 'mandelbrotFS'].map(_ => ctx.compileShaderById(_)));
     canvas.addEventListener('click', (event) => {
       const clickTime = Date.now();
+      // Doubleclick is two clicks less than .3 second apart 
       if (clickTime - this._prevClickTime > 300) {
         this._prevClickTime = clickTime;
         return;
       }
-      this._scale *= .5;
-      this._center = this.canvas2rendercoord(event.offsetX, event.offsetY);
+      this.adjustScaleWithInvariantPoint(.5, event.offsetX, event.offsetY);
       this._prevClickTime = 0;
       this.render();
     });
+    canvas.addEventListener('wheel', (event) => {
+      const wheelTime = Date.now();
+      if (event.deltaY == 0) return;
+      // Limit number of scroll events to 20 per seconds
+      if (wheelTime - this._prevWheelTime < 50) {
+        event.preventDefault();
+        return;
+      }
+      this._prevWheelTime = wheelTime;
+      const factor = event.deltaY > 0 ? .8 : 1.25;
+      this.adjustScaleWithInvariantPoint(factor, event.offsetX, event.offsetY);
+      this.render();
+      event.preventDefault();
+    });
     ctx.getGLContext().useProgram(prog);
     this._prevClickTime = 0;
+    this._prevWheelTime = 0;
     this._ctx = ctx;
-    this._canvasDim = new Point(canvas.clientWidth, canvas.clientHeight);
+    this._halfCanvasDim = new Point(canvas.clientWidth, canvas.clientHeight).mul(.5);
     this._scale = 4.0/Math.min(canvas.clientWidth, canvas.clientHeight);
     this._center = new Point(0.0, 0.0);
-    this._zoom = 1.0;
   }
+
   canvas2rendercoord(x, y) {
-    const start = this._center.sub(this._canvasDim.mul(.5*this._scale));
-    return start.add(new Point(x,y).mul(this._scale));
+    const offs = new Point(x, y).sub(this._halfCanvasDim);
+    return this._center.add(offs.mul(this._scale));
   }
+
+  adjustScaleWithInvariantPoint(factor, invX, invY) {
+    const offs = new Point(invX, invY).sub(this._halfCanvasDim);
+    this._center = this._center.add(offs.mul((1-factor)*this._scale));
+    this._scale *= factor;
+  }
+
   drawQuad(x0, y0, x1, y1) {
     this._ctx.draw2DArray(this._ctx.PRIMITIVES.TRIANGLE_STRIP, 'coord', [x0, y0, x1, y0, x0, y1, x1, y1]);
   }
+
   render() {
+    const canvasDim = this._halfCanvasDim.mul(2.0);
     const topLeft = this.canvas2rendercoord(0,0);
-    const bottomRight = this.canvas2rendercoord(this._canvasDim.x, this._canvasDim.y);
+    const bottomRight = this.canvas2rendercoord(canvasDim.x, canvasDim.y);
     const ctx = this._ctx;
     ctx.setUniform2f('topLeft', topLeft.x, topLeft.y);
     ctx.setUniform2f('bottomRight', bottomRight.x, bottomRight.y);
