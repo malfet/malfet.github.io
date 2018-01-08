@@ -22,7 +22,7 @@ vec2 mandelbrotStep(vec2 z, vec2 c) {
   return vec2(z.x*z.x-z.y*z.y+c.x, 2.0*z.x*z.y + c.y);
 }
 void main(void) {
-  vec2 z= vec2(0, 0);
+  vec2 z = vec2(0, 0);
   vec2 dim = bottomRight-topLeft;
   vec2 c = vec2(topLeft.x + dim.x*.5*(pos.x+1.0), bottomRight.y - dim.y*.5*(pos.y+1.0));
   for(int cnt = 0; cnt < 256; cnt++) {
@@ -142,12 +142,43 @@ class Point {
   sub(p) { return new Point(this.x-p.x, this.y-p.y); }
   add(p) { return new Point(this.x+p.x, this.y+p.y); }
   mul(a) { return new Point(a*this.x, a*this.y); }
+  len2() { return this.x*this.x + this.y*this.y;}
+  len() { return Math.sqrt(this.len2());}
+}
+
+function TouchState(event) {
+  const rc = {};
+  for(var cnt = 0; cnt < event.touches.length; ++cnt) {
+    const touch = event.touches[cnt];
+    rc[touch.identifier] = new Point(touch.clientX, touch.clientY);
+  }
+  return rc;
+}
+
+function comparableTouches(a, b) {
+    if (a == null || b == null) return false;
+    const akeys = Object.keys(a);
+    const bkeys  = Object.keys(b);
+    for(var cnt = 0; cnt < akeys.length; ++cnt) {
+      if (!bkeys.includes(akeys[cnt])) return false;
+    }
+    return true;
 }
 
 class ZoomRenderer {
   constructor(canvas) {
     const ctx = new GLContext(canvas);
     const prog = ctx.linkProgram(['passThruVS', 'mandelbrotFS'].map(_ => ctx.compileShaderById(_)));
+    ctx.getGLContext().useProgram(prog);
+    this._ctx = ctx;
+    this._halfCanvasDim = new Point(canvas.clientWidth, canvas.clientHeight).mul(.5);
+    this._scale = 4.0/Math.min(canvas.clientWidth, canvas.clientHeight);
+    this._center = new Point(0.0, 0.0);
+    this._configureMouseEventHandlers(canvas);
+    this._configureTouchEventHandlers(canvas);
+  }
+
+  _configureMouseEventHandlers(canvas) {
     canvas.addEventListener('click', (event) => {
       const clickTime = Date.now();
       // Doubleclick is two clicks less than .3 seconds apart
@@ -191,16 +222,58 @@ class ZoomRenderer {
       this._dragStart = null;
       this._dragStartCenter = null;
     });
-    ctx.getGLContext().useProgram(prog);
     this._prevClickTime = 0;
     this._prevWheelTime = 0;
     this._prevMoveTime = 0;
     this._dragStart = null;
     this._dragStartCenter = null;
-    this._ctx = ctx;
-    this._halfCanvasDim = new Point(canvas.clientWidth, canvas.clientHeight).mul(.5);
-    this._scale = 4.0/Math.min(canvas.clientWidth, canvas.clientHeight);
-    this._center = new Point(0.0, 0.0);
+  }
+  _configureTouchEventHandlers(canvas) {
+    try { TouchEvent; } catch(e) {
+      return;
+    }
+    console.log("Configuring touch event handlers");
+    canvas.addEventListener('touchstart', (event) => {
+      this._touchStart = TouchState(event);
+      this._touchStartCenter = this._center;
+      this._touchStartScale = this._scale;
+    });
+    canvas.addEventListener('touchend', (event) => {
+      this._touchStart = null;
+      this._touchStartCenter = null;
+    });
+    canvas.addEventListener('touchmove', (event) => {
+      if (this._touchStart == null) return;
+      const state = TouchState(event);
+      if (!comparableTouches(state, this._touchStart)) return;
+      event.preventDefault();
+      const touchTime = Date.now();
+      if (touchTime - this._prevTouchTime < 50) return;
+      this._prevTouchTime = touchTime;
+
+      const touchKeys = Object.keys(this._touchStart);
+      if (touchKeys.length == 1) {
+        const key = touchKeys[0];
+        const offs = state[key].sub(this._touchStart[key]);
+        this._center = this._touchStartCenter.sub(offs.mul(this._scale));
+        this.render();
+      }
+      if (touchKeys.length == 2) {
+        const a = touchKeys[0];
+        const b = touchKeys[1];
+        const mid = this._touchStart[a].add(this._touchStart[b]).mul(.5);
+        const distStart = this._touchStart[a].sub(this._touchStart[b]).len();
+        const dist = state[a].sub(state[b]).len();
+        this._scale = this._touchStartScale;
+        this._center = this._touchStartCenter;
+        this.adjustScaleWithInvariantPoint(distStart/dist, mid.x, mid.y);
+        this.render();
+      }
+    });
+    this._prevTouchTime = 0;
+    this._touchStart = null;
+    this._touchStartCenter = null;
+
   }
 
   canvas2rendercoord(x, y) {
