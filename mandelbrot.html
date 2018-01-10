@@ -8,6 +8,7 @@ varying vec2 pos;
 void main(void) {
   pos = coord;
   gl_Position = vec4(coord, 0, 1.0);
+  gl_PointSize = 1.0;
 }
 </script>
 
@@ -15,16 +16,20 @@ void main(void) {
 precision highp float;
 varying vec2 pos;
 uniform vec2 topLeft, bottomRight;
+
 float sqrdistance(vec2 val) {
-return val.x*val.x+val.y*val.y;
+  return val.x*val.x+val.y*val.y;
 }
+
 vec2 mandelbrotStep(vec2 z, vec2 c) {
   return vec2(z.x*z.x-z.y*z.y+c.x, 2.0*z.x*z.y + c.y);
 }
+
 void main(void) {
   vec2 z = vec2(0, 0);
   vec2 dim = bottomRight-topLeft;
   vec2 c = vec2(topLeft.x + dim.x*.5*(pos.x+1.0), bottomRight.y - dim.y*.5*(pos.y+1.0));
+
   for(int cnt = 0; cnt < 256; cnt++) {
     if (sqrdistance(z) >= 4.0) {
       gl_FragColor = vec4(abs(.5*z.x), float(cnt)/256.0, abs(.5*z.y), 1);
@@ -37,6 +42,7 @@ void main(void) {
 </script>
 
 <script type="x-shader/x-fragment" id="solidColorFS">
+precision highp float;
 uniform vec4 color;
 void main(void) {
   gl_FragColor = color;
@@ -120,6 +126,13 @@ class GLContext {
     glCtx.uniform2f(idx, a, b);
   }
 
+  setUniform4f(name, a, b, c, d) {
+    const glCtx = this.getGLContext();
+    const prog = glCtx.getParameter(glCtx.CURRENT_PROGRAM);
+    const idx = glCtx.getUniformLocation(prog, name);
+    glCtx.uniform4f(idx, a, b, c, d);
+  }
+
   draw2DArray(type, name, arr) {
     const glCtx = this.getGLContext();
     const prog = glCtx.getParameter(glCtx.CURRENT_PROGRAM);
@@ -146,6 +159,17 @@ class Point {
   len() { return Math.sqrt(this.len2());}
 }
 
+class Complex {
+  constructor(re, im) { this.re = re; this.im = im; }
+  sub(p) { return new Complex(this.re-p.re, this.im-p.im); }
+  add(p) { return new Complex(this.re+p.re, this.im+p.im); }
+  mul(x) {
+    if (x instanceof Complex)
+      return new Complex(x.re*this.re - x.im*this.im, x.re*this.im + x.im*this.re);
+    return new Complex(x*this.re, x*this.im);
+  }
+}
+
 function TouchState(event) {
   const rc = {};
   for(var cnt = 0; cnt < event.touches.length; ++cnt) {
@@ -169,8 +193,11 @@ class ZoomRenderer {
   constructor(canvas) {
     const ctx = new GLContext(canvas);
     const prog = ctx.linkProgram(['passThruVS', 'mandelbrotFS'].map(_ => ctx.compileShaderById(_)));
+    const sprog = ctx.linkProgram(['passThruVS', 'solidColorFS'].map(_ => ctx.compileShaderById(_)));
     ctx.getGLContext().useProgram(prog);
     this._ctx = ctx;
+    this._mandelProgram = prog;
+    this._solidProgram = sprog;
     this._halfCanvasDim = new Point(canvas.clientWidth, canvas.clientHeight).mul(.5);
     this._scale = 4.0/Math.min(canvas.clientWidth, canvas.clientHeight);
     this._center = new Point(0.0, 0.0);
@@ -291,11 +318,41 @@ class ZoomRenderer {
     this._ctx.draw2DArray(this._ctx.PRIMITIVES.TRIANGLE_STRIP, 'coord', [x0, y0, x1, y0, x0, y1, x1, y1]);
   }
 
+  renderOnCpu(sx,sy,ex,ey) {
+    if (sx == undefined) sx = -1;
+    if (sy == undefined) sy = -1;
+    if (ex == undefined) ex = 1;
+    if (ey == undefined) ey = 1;
+    const canvasDim = this._halfCanvasDim.mul(2.0);
+    const topLeft = this.canvas2rendercoord(0,0);
+    const bottomRight = this.canvas2rendercoord(canvasDim.x, canvasDim.y);
+    const dim = bottomRight.sub(topLeft);
+    const ctx = this._ctx;
+    ctx.getGLContext().useProgram(this._solidProgram);
+    for(var y = sy; y <= ey; y += 2.0/canvasDim.y)
+    for(var x = sx; x <= ex; x += 2.0/canvasDim.x) {
+      var z = new Complex(0, 0);
+      const c = new Complex(topLeft.x + dim.x*.5*(x+1.0), bottomRight.y - dim.y*.5*(y+1.0));
+      var cnt = 0;
+      while ( cnt < 256 && z.re*z.re+z.im*z.im < 4.0) {
+        z = z.mul(z).add(c);
+        cnt += 1;
+      }
+      if (cnt == 256) {
+        ctx.setUniform4f('color', 0, 0, 0, 1);
+      } else {
+        ctx.setUniform4f('color', Math.abs(.5*z.re), cnt/256, Math.abs(.5*z.im), 1);
+      }
+      ctx.draw2DArray(ctx.PRIMITIVES.POINTS, 'coord', [x, y]);
+    }
+  }
+
   render() {
     const canvasDim = this._halfCanvasDim.mul(2.0);
     const topLeft = this.canvas2rendercoord(0,0);
     const bottomRight = this.canvas2rendercoord(canvasDim.x, canvasDim.y);
     const ctx = this._ctx;
+    ctx.getGLContext().useProgram(this._mandelProgram);
     ctx.setUniform2f('topLeft', topLeft.x, topLeft.y);
     ctx.setUniform2f('bottomRight', bottomRight.x, bottomRight.y);
     this.drawQuad(-1,-1, 1, 1);
