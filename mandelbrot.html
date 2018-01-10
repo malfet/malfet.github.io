@@ -12,6 +12,102 @@ void main(void) {
 }
 </script>
 
+<script type="x-shader/x-fragment" id="dfMandelbrotFS">
+precision highp float;
+varying vec2 pos;
+uniform vec2 center, step;
+
+vec2 quickTwoSum(float a, float b) {
+  float s = a + b;
+  float e = b - (s - a);
+  return vec2(s, e);
+}
+
+vec4 twoSumComp(vec2 a_ri, vec2 b_ri) {
+  vec2 s = a_ri + b_ri;
+  vec2 v = s - a_ri;
+  vec2 e = (a_ri - (s - v)) + (b_ri - v);
+  return vec4(s.x, e.x, s.y, e.y);
+}
+
+vec2 df_add(vec2 a, vec2 b) {
+  vec4 st = twoSumComp(a, b);
+  st.y += st.z;
+  st.xy = quickTwoSum(st.x, st.y);
+  st.y += st.w;
+  st.xy = quickTwoSum(st.x, st.y);
+  return st.xy;
+}
+
+vec4 twoSubComp(vec2 a_ri, vec2 b_ri) {
+  vec2 s = a_ri - b_ri;
+  vec2 v = s - a_ri;
+  vec2 e = (a_ri - (s - v)) + (-b_ri - v);
+  return vec4(s.x, e.x, s.y, e.y);
+}
+
+vec2 df_sub(vec2 a, vec2 b) {
+  vec4 st = twoSubComp(a, b);
+  st.y += st.z;
+  st.xy = quickTwoSum(st.x, st.y);
+  st.y += st.w;
+  st.xy = quickTwoSum(st.x, st.y);
+  return st.xy;
+}
+
+vec4 splitComp(vec2 c)
+{
+  vec2 t = c * 4097.0;
+  vec2 c_hi = t - (t - c);
+  vec2 c_lo = c - c_hi;
+  return vec4(c_hi.x, c_lo.x, c_hi.y, c_lo.y);
+}
+
+vec2 twoProd(float a, float b)
+{
+  float p = a * b;
+  vec4 abS = splitComp(vec2(a,b));
+  float err = ((abS.x * abS.z - p)
+    + abS.x * abS.w + abS.y * abS.z)
+    + abS.y * abS.w;
+  return vec2(p, err);
+}
+
+vec2 df_mul(vec2 a, vec2 b) {
+  vec2 p = twoProd(a.x,b.x);
+  p.y += a.x * b.y;
+  p.y += a.y * b.x;
+  return  quickTwoSum(p.x,p.y);
+}
+
+vec4 mandelbrotStep(vec4 z, vec4 c) {
+  vec2 zx = df_add(df_sub(df_mul(z.xy,z.xy), df_mul(z.zw, z.zw)), c.xy);
+  vec2 zy = df_add(df_mul(vec2(2.0,0), df_mul(z.xy,z.zw)), c.zw);
+  return vec4(zx, zy);
+}
+
+float sqrdistance(vec4 val) {
+  return val.x*val.x + val.z*val.z;
+}
+
+void main(void) {
+  vec4 z = vec4(0);
+  vec4 c = vec4(
+    df_add(vec2(center.x, 0), df_mul(vec2(step.x, 0), vec2(pos.x, 0))),
+    df_sub(vec2(center.y, 0), df_mul(vec2(step.y, 0), vec2(pos.y, 0))));
+
+  for(int cnt = 0; cnt < 256; cnt++) {
+    if (sqrdistance(z) >= 4.0) {
+      gl_FragColor = vec4(abs(.5*z.x), float(cnt)/256.0, abs(.5*z.z), 1);
+      return;
+    }
+    z = mandelbrotStep(z, c);
+  }
+  gl_FragColor = vec4(0, 0, 0, 1.0);
+}
+
+</script>
+
 <script type="x-shader/x-fragment" id="mandelbrotFS">
 precision highp float;
 varying vec2 pos;
@@ -192,14 +288,19 @@ class ZoomRenderer {
   constructor(canvas) {
     const ctx = new GLContext(canvas);
     const prog = ctx.linkProgram(['passThruVS', 'mandelbrotFS'].map(_ => ctx.compileShaderById(_)));
+    const dprog = ctx.linkProgram(['passThruVS', 'dfMandelbrotFS'].map(_ => ctx.compileShaderById(_)));
     const sprog = ctx.linkProgram(['passThruVS', 'solidColorFS'].map(_ => ctx.compileShaderById(_)));
-    ctx.getGLContext().useProgram(prog);
     this._ctx = ctx;
     this._mandelProgram = prog;
+    this._dfMandelProgram = dprog;
     this._solidProgram = sprog;
     this._halfCanvasDim = new Point(canvas.clientWidth, canvas.clientHeight).mul(.5);
     this._scale = 4.0/Math.min(canvas.clientWidth, canvas.clientHeight);
     this._center = new Point(0.0, 0.0);
+    if (window.location.search.indexOf('overfloat') >=0) {
+      this._center = new Point(0.2807024158978315, -0.011177972555812295);
+      this._scale = 4.0/(2e6*Math.min(canvas.clientWidth, canvas.clientHeight));
+    }
     this._configureMouseEventHandlers(canvas);
     this._configureTouchEventHandlers(canvas);
   }
@@ -348,9 +449,11 @@ class ZoomRenderer {
 
   render() {
     const ctx = this._ctx;
-    ctx.getGLContext().useProgram(this._mandelProgram);
+    const scale = this._scale;
+    const step = this._halfCanvasDim.mul(scale);
+    ctx.getGLContext().useProgram(scale >= 2e-8 ? this._mandelProgram : this._dfMandelProgram);
     ctx.setUniform2f('center', this._center.x, this._center.y);
-    ctx.setUniform2f('step', this._scale*this._halfCanvasDim.x, this._scale*this._halfCanvasDim.y);
+    ctx.setUniform2f('step', step.x, step.y);
     this.drawQuad(-1,-1, 1, 1);
   }
 }
