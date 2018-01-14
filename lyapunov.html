@@ -1,0 +1,378 @@
+<html>
+<head>
+  <title>Lyapunov exponent</title>
+</head>
+<script type="x-shader/x-vertex" id="passThruVS">
+attribute vec2 coord;
+varying vec2 pos;
+void main(void) {
+  pos = coord;
+  gl_Position = vec4(coord, 0, 1.0);
+  gl_PointSize = 1.0;
+}
+</script>
+
+<script type="x-shader/x-fragment" id="lyapunovFS">
+precision highp float;
+varying vec2 pos;
+uniform vec2 center, step;
+const float positiveScaleFactor = 1.0;
+const float negativeScaleFactor = -1.0;
+const int preheatSteps = 10;
+const int computeSteps = 10;
+
+vec2 logisticStep(vec2 args, vec2 param);
+
+float computeLyapunovExponent(vec2 pos) {
+  vec2 args = vec2(.5, 0.0);
+  // preheat
+  for(int cnt = 0; cnt < preheatSteps; ++cnt)
+    args = logisticStep(args, pos);
+  args.y = 0.0;
+  for(int cnt = 0; cnt < computeSteps; ++cnt)
+    args = logisticStep(args, pos);
+
+  return args.y;
+}
+
+void main(void) {
+  vec2 c = vec2(center.x + step.x*pos.x, center.y - step.y*pos.y);
+  float lambda  = computeLyapunovExponent(c);
+  if (lambda > 0.0)
+    gl_FragColor = vec4(0.0, 0.0, positiveScaleFactor * lambda, 1.0);
+  else
+    gl_FragColor = vec4(negativeScaleFactor * lambda, negativeScaleFactor * lambda, 0.0, 1.0);
+}
+</script>
+
+<script type="x-shader/x-fragment" id="solidColorFS">
+precision highp float;
+uniform vec4 color;
+void main(void) {
+  gl_FragColor = color;
+}
+</script>
+
+<script type="text/javascript">
+
+function generateStepFunction(str) {
+  var rc = 'vec2 logisticStep(vec2 args, vec2 param) {';
+  for(var cnt = 0; cnt < str.length; ++cnt) {
+    const r = str[cnt] == 'A' ? 'param.x' : 'param.y';
+    rc += 'args.x = ' + r + ' * args.x * (1.0 - args.x);';
+    rc += 'args.y += log(abs(' + r + ' * (1.0 - 2.0 * args.x)));';
+  }
+  return rc + ' return args; }';
+}
+
+class GLContext {
+  constructor(canvas) {
+    if (canvas == null)
+      throw 'Can not find canvas';
+    const ctx = canvas.getContext('webgl');
+    if (ctx == null)
+      throw 'Can not get WebGL context...';
+    ctx.viewport(0, 0, canvas.clientWidth, canvas.clientHeight);
+    ctx.clearColor(0, 0, 0, 1.0);
+    ctx.clear(ctx.COLOR_BUFFER_BIT);
+    this._ctx = ctx;
+    this.PRIMITIVES = {
+      POINTS: ctx.POINTS,
+      LINE_STRIP: ctx.LINE_STRIP,
+      LINES: ctx.LINES,
+      TRIANGLE_STRIP: ctx.TRIANGLE_STRIP,
+      TRIANGLES: ctx.TRIANGLES,
+    };
+    this.VERTEX_SHADER = ctx.VERTEX_SHADER;
+    this.FRAGMENT_SHADER = ctx.FRAGMENT_SHADER;
+  }
+
+  getGLContext() {
+    if (!this._ctx) throw 'Missing context';
+    return this._ctx;
+  }
+
+  compileShader(type, source) {
+    const glCtx = this.getGLContext();
+    var rc = glCtx.createShader(type);
+    glCtx.shaderSource(rc, source);
+    glCtx.compileShader(rc);
+    if (!glCtx.getShaderParameter(rc, glCtx.COMPILE_STATUS)) {
+      throw glCtx.getShaderInfoLog(rc) + ' in ' + source;
+    }
+    return rc;
+  }
+
+  getElementById(id) {
+    const element = document.getElementById(id);
+    if (element == null) {
+      throw 'Can not find shader by element id ' + id;
+    }
+     return element;
+  }
+
+  compileShaderById(id) {
+    const glCtx = this.getGLContext();
+    const element = this.getElementById(id);
+    const source = element.innerHTML;
+    if (element.type === 'x-shader/x-vertex') {
+      return this.compileShader(glCtx.VERTEX_SHADER, source);
+    }
+    if (element.type === 'x-shader/x-fragment') {
+      return this.compileShader(glCtx.FRAGMENT_SHADER, source);
+    }
+    throw 'Unknown shader type ' + element.type;
+  }
+
+  linkProgram(shaders) {
+    const glCtx = this.getGLContext();
+    const rc = glCtx.createProgram();
+    for(var cnt = 0; cnt < shaders.length; cnt++) {
+      if (!shaders[cnt]) {
+        throw 'Can not link program with null shaders';
+      }
+      glCtx.attachShader(rc, shaders[cnt]);
+    }
+    glCtx.linkProgram(rc);
+    if (!glCtx.getProgramParameter(rc, glCtx.LINK_STATUS)) {
+      throw glCtx.getProgramInfoLog(rc);
+    }
+    return rc;
+  }
+
+  setUniform2f(name, a, b) {
+    const glCtx = this.getGLContext();
+    const prog = glCtx.getParameter(glCtx.CURRENT_PROGRAM);
+    const idx = glCtx.getUniformLocation(prog, name);
+    glCtx.uniform2f(idx, a, b);
+  }
+
+  setUniform4f(name, a, b, c, d) {
+    const glCtx = this.getGLContext();
+    const prog = glCtx.getParameter(glCtx.CURRENT_PROGRAM);
+    const idx = glCtx.getUniformLocation(prog, name);
+    glCtx.uniform4f(idx, a, b, c, d);
+  }
+
+  draw2DArray(type, name, arr) {
+    const glCtx = this.getGLContext();
+    const prog = glCtx.getParameter(glCtx.CURRENT_PROGRAM);
+    const idx = glCtx.getAttribLocation(prog, name);
+
+    var buf = glCtx.createBuffer();
+    glCtx.bindBuffer(glCtx.ARRAY_BUFFER, buf);
+    glCtx.bufferData(glCtx.ARRAY_BUFFER, new Float32Array(arr), glCtx.STATIC_DRAW);
+
+    glCtx.enableVertexAttribArray(idx);
+    glCtx.vertexAttribPointer(idx, 2, glCtx.FLOAT, false, 0, 0);
+
+    glCtx.drawArrays(type, 0, arr.length/2);
+    glCtx.deleteBuffer(buf);
+  }
+}
+
+class Point {
+  constructor(x, y) { this.x = x; this.y = y; }
+  sub(p) { return new Point(this.x-p.x, this.y-p.y); }
+  add(p) { return new Point(this.x+p.x, this.y+p.y); }
+  mul(a) { return new Point(a*this.x, a*this.y); }
+  len2() { return this.x*this.x + this.y*this.y;}
+  len() { return Math.sqrt(this.len2());}
+}
+
+function TouchState(event) {
+  const rc = {};
+  for(var cnt = 0; cnt < event.touches.length; ++cnt) {
+    const touch = event.touches[cnt];
+    rc[touch.identifier] = new Point(touch.clientX, touch.clientY);
+  }
+  return rc;
+}
+
+function comparableTouches(a, b) {
+    if (a == null || b == null) return false;
+    const akeys = Object.keys(a);
+    const bkeys  = Object.keys(b);
+    for(var cnt = 0; cnt < akeys.length; ++cnt) {
+      if (!bkeys.includes(akeys[cnt])) return false;
+    }
+    return true;
+}
+
+class ZoomRenderer {
+  constructor(canvas) {
+    const ctx = new GLContext(canvas);
+    this._ctx = ctx;
+    this._halfCanvasDim = new Point(canvas.clientWidth, canvas.clientHeight).mul(.5);
+    this._scale = 2.0/Math.min(canvas.clientWidth, canvas.clientHeight);
+    this._center = new Point(3.0, 3.0);
+    this._configureMouseEventHandlers(canvas);
+    this._configureTouchEventHandlers(canvas);
+    const seqMatch = window.location.search.match(/sequence=([AB]+)/);
+    if (seqMatch)
+      this._compileProgram(seqMatch[1]);
+    else
+      this._compileProgram('AABAB');
+  }
+
+  _compileProgram(sequence) {
+    const ctx = this._ctx;
+    const gl = ctx.getGLContext();
+    const vertexShader = ctx.compileShaderById('passThruVS');
+    const numSteps = 300;
+    var fragmentShaderSource = ctx.getElementById('lyapunovFS').innerHTML
+        .replace('positiveScaleFactor = 1.0', 'positiveScaleFactor = ' + (3.0/numSteps))
+        .replace('negativeScaleFactor = -1.0', 'negativeScaleFactor = ' + (-2.5/numSteps))
+        .replace('preheatSteps = 10', 'preheatSteps = ' + Math.floor(50/sequence.length))
+        .replace('computeSteps = 10', 'computeSteps = ' + Math.floor(numSteps/sequence.length));
+    fragmentShaderSource += generateStepFunction(sequence);
+    const fragmentShader = ctx.compileShader(ctx.FRAGMENT_SHADER, fragmentShaderSource);
+    const prog = ctx.linkProgram([vertexShader, fragmentShader]);
+    gl.deleteShader(vertexShader);
+    gl.deleteShader(fragmentShader);
+    gl.useProgram(prog);
+  }
+
+  _configureMouseEventHandlers(canvas) {
+    canvas.addEventListener('click', (event) => {
+      const clickTime = Date.now();
+      // Doubleclick is two clicks less than .3 seconds apart
+      if (clickTime - this._prevClickTime > 300) {
+        this._prevClickTime = clickTime;
+        return;
+      }
+      this.adjustScaleWithInvariantPoint(.5, event.offsetX, event.offsetY);
+      this._prevClickTime = 0;
+      this.render();
+    });
+    canvas.addEventListener('wheel', (event) => {
+      const wheelTime = Date.now();
+      if (event.deltaY == 0) return;
+      // Limit number of scroll events to 20 per seconds
+      if (wheelTime - this._prevWheelTime < 50) {
+        event.preventDefault();
+        return;
+      }
+      this._prevWheelTime = wheelTime;
+      const factor = event.deltaY > 0 ? .8 : 1.25;
+      this.adjustScaleWithInvariantPoint(factor, event.offsetX, event.offsetY);
+      this.render();
+      event.preventDefault();
+    });
+    canvas.addEventListener('mousedown', (event) => {
+      this._dragStart = new Point(event.offsetX, event.offsetY);
+      this._dragStartCenter = new Point(this._center.x, this._center.y);
+    });
+    canvas.addEventListener('mousemove', (event) => {
+      const dragStart = this._dragStart;
+      if (dragStart == null) return;
+      const moveTime = Date.now();
+      if (moveTime - this._prevMoveTime < 50) return;
+      this._prevMoveTime = moveTime;
+      const offs = new Point(event.offsetX, event.offsetY).sub(dragStart);
+      this._center = this._dragStartCenter.sub(offs.mul(this._scale));
+      this.render();
+    });
+    canvas.addEventListener('mouseup', (event) => {
+      this._dragStart = null;
+      this._dragStartCenter = null;
+    });
+    this._prevClickTime = 0;
+    this._prevWheelTime = 0;
+    this._prevMoveTime = 0;
+    this._dragStart = null;
+    this._dragStartCenter = null;
+  }
+  _configureTouchEventHandlers(canvas) {
+    try { TouchEvent; } catch(e) {
+      return;
+    }
+    console.log("Configuring touch event handlers");
+    canvas.addEventListener('touchstart', (event) => {
+      this._touchStart = TouchState(event);
+      this._touchStartCenter = this._center;
+      this._touchStartScale = this._scale;
+    });
+    canvas.addEventListener('touchend', (event) => {
+      this._touchStart = null;
+      this._touchStartCenter = null;
+    });
+    canvas.addEventListener('touchmove', (event) => {
+      if (this._touchStart == null) return;
+      const state = TouchState(event);
+      if (!comparableTouches(state, this._touchStart)) return;
+      event.preventDefault();
+      const touchTime = Date.now();
+      if (touchTime - this._prevTouchTime < 50) return;
+      this._prevTouchTime = touchTime;
+
+      const touchKeys = Object.keys(this._touchStart);
+      if (touchKeys.length == 1) {
+        const key = touchKeys[0];
+        const offs = state[key].sub(this._touchStart[key]);
+        this._center = this._touchStartCenter.sub(offs.mul(this._scale));
+        this.render();
+      }
+      if (touchKeys.length == 2) {
+        const a = touchKeys[0];
+        const b = touchKeys[1];
+        const mid = this._touchStart[a].add(this._touchStart[b]).mul(.5);
+        const distStart = this._touchStart[a].sub(this._touchStart[b]).len();
+        const dist = state[a].sub(state[b]).len();
+        this._scale = this._touchStartScale;
+        this._center = this._touchStartCenter;
+        this.adjustScaleWithInvariantPoint(distStart/dist, mid.x, mid.y);
+        this.render();
+      }
+    });
+    this._prevTouchTime = 0;
+    this._touchStart = null;
+    this._touchStartCenter = null;
+
+  }
+
+  canvas2rendercoord(x, y) {
+    const offs = new Point(x, y).sub(this._halfCanvasDim);
+    return this._center.add(offs.mul(this._scale));
+  }
+
+  adjustScaleWithInvariantPoint(factor, invX, invY) {
+    const offs = new Point(invX, invY).sub(this._halfCanvasDim);
+    this._center = this._center.add(offs.mul((1-factor)*this._scale));
+    this._scale *= factor;
+  }
+
+  drawQuad(x0, y0, x1, y1) {
+    this._ctx.draw2DArray(this._ctx.PRIMITIVES.TRIANGLE_STRIP, 'coord', [x0, y0, x1, y0, x0, y1, x1, y1]);
+  }
+
+  render() {
+    const ctx = this._ctx;
+    const scale = this._scale;
+    const step = this._halfCanvasDim.mul(scale);
+    ctx.setUniform2f('center', this._center.x, this._center.y);
+    ctx.setUniform2f('step', step.x, step.y);
+    this.drawQuad(-1,-1, 1, 1);
+  }
+}
+
+var renderer = null;
+function configureRenderer() {
+  const canvas = document.getElementById('canvas');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  try {
+    renderer = new ZoomRenderer(canvas);
+  } catch (e) {
+    alert('Inialization failed: ' + e);
+    return;
+  }
+  renderer.render();
+}
+
+</script>
+<body onLoad="configureRenderer();">
+  <H1>Lyapunov exponent rendered in fragment shader</H1>
+  <canvas id="canvas" width="1024px" height="1024px"></canvas>
+</body>
+</html>
