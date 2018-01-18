@@ -460,16 +460,38 @@ class ZoomRenderer {
 
 var renderer = null;
 function configureRenderer() {
+  const runBenchmark = window.location.search.indexOf('benchmark') > 0;
   const canvas = document.getElementById('canvas');
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
+  if (!runBenchmark) {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
   try {
     renderer = new ZoomRenderer(canvas);
   } catch (e) {
     alert('Inialization failed: ' + e);
     return;
   }
-  renderer.render();
+  if (!runBenchmark) {
+    return renderer.render();
+  }
+  var animCount = 0;
+  var lastTime = 0;
+  var avgFPS = 0;
+  const callback = function(animTime) {
+    if (lastTime > 0) {
+      const curFPS = 1000.0/(animTime - lastTime);
+      avgFPS += (curFPS - avgFPS) / animCount;
+    }
+    lastTime = animTime;
+    renderer.render();
+    renderer.adjustScaleWithInvariantPoint(.96, 591.7, 400);
+    if (animCount++ == 256) {
+      return console.log("Average FPS is " + avgFPS);
+    }
+      window.requestAnimationFrame(callback);
+  };
+  window.requestAnimationFrame(callback);
 }
 
 </script>
