@@ -312,10 +312,12 @@ class ZoomRenderer {
     this._center = new Point(0.0, 0.0);
     const stepsMatch = window.location.search.match(/numSteps=([0-9]+)/);
     this._numSteps = stepsMatch ? Number(stepsMatch[1]) : 256;
-    if (window.location.search.indexOf('overfloat') >=0) {
+    if (window.location.search.indexOf('overfloat') >= 0) {
       this._center = new Point(0.2807024158978315, -0.011177972555812295);
       this._scale = 4.0/(2e6*Math.min(canvas.clientWidth, canvas.clientHeight));
     }
+    this._forceDF = window.location.search.indexOf('forceDF') >= 0;
+    this._noDF = window.location.search.indexOf('noDF') >= 0;
     this._configureMouseEventHandlers(canvas);
     this._configureTouchEventHandlers(canvas);
   }
@@ -466,7 +468,12 @@ class ZoomRenderer {
     const ctx = this._ctx;
     const scale = this._scale;
     const step = this._halfCanvasDim.mul(scale);
-    ctx.getGLContext().useProgram(scale >= 2e-8 ? this._mandelProgram : this._dfMandelProgram);
+    if (this._noDF)
+      ctx.getGLContext().useProgram(this._mandelProgram);
+    else if (this._forceDF)
+      ctx.getGLContext().useProgram(this._dfMandelProgram);
+    else
+      ctx.getGLContext().useProgram(scale >= 1e-7 ? this._mandelProgram : this._dfMandelProgram);
     ctx.setUniform2f('center', this._center.x, this._center.y);
     ctx.setUniform2f('step', step.x, step.y);
     ctx.setUniform1i('numSteps', this._numSteps);
