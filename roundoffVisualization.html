@@ -1,0 +1,178 @@
+<html>
+<head>
+  <title>Curious case of disappearing roundoff errors</title>
+</head>
+<script type="x-shader/x-vertex" id="passThruVS">
+attribute vec2 coord;
+varying vec2 pos;
+void main(void) {
+  pos = coord;
+  gl_Position = vec4(coord, 0, 1.0);
+  gl_PointSize = 1.0;
+}
+</script>
+
+<script type="x-shader/x-fragment" id="renderFrac">
+precision highp float;
+varying vec2 pos;
+
+vec2 twoSum(float a, float b) {
+  float s = a + b;
+  float av = s - b;
+  float bv = s - a;
+  float e = (a-av)+(b-bv);
+  return vec2(s, e);
+}
+
+void main(void) {
+  vec2 sum = twoSum(pos.x, pos.y * 2e-8);
+  gl_FragColor = vec4(0, fract(sum.y*1e8), fract(abs(sum.x)), 1);
+}
+</script>
+
+<script type="text/javascript">
+
+class GLContext {
+  constructor(canvas) {
+    if (canvas == null)
+      throw 'Can not find canvas';
+    const ctx = canvas.getContext('webgl');
+    if (ctx == null)
+      throw 'Can not get WebGL context...';
+    ctx.viewport(0, 0, canvas.clientWidth, canvas.clientHeight);
+    ctx.clearColor(0, 0, 0, 1.0);
+    ctx.clear(ctx.COLOR_BUFFER_BIT);
+    this._ctx = ctx;
+    this.PRIMITIVES = {
+      POINTS: ctx.POINTS,
+      LINE_STRIP: ctx.LINE_STRIP,
+      LINES: ctx.LINES,
+      TRIANGLE_STRIP: ctx.TRIANGLE_STRIP,
+      TRIANGLES: ctx.TRIANGLES,
+    };
+  }
+
+  getGLContext() {
+    if (!this._ctx) throw 'Missing context';
+    return this._ctx;
+  }
+
+  compileShader(type, source) {
+    const glCtx = this.getGLContext();
+    var rc = glCtx.createShader(type);
+    glCtx.shaderSource(rc, source);
+    glCtx.compileShader(rc);
+    if (!glCtx.getShaderParameter(rc, glCtx.COMPILE_STATUS)) {
+      throw glCtx.getShaderInfoLog(rc) + ' in ' + source;
+    }
+    return rc;
+  }
+
+  compileShaderById(id) {
+    const glCtx = this.getGLContext();
+    const element = document.getElementById(id);
+    if (element == null) {
+      throw 'Can not find shader by element id ' + id;
+    }
+    const source = element.innerHTML;
+    if (element.type === 'x-shader/x-vertex') {
+      return this.compileShader(glCtx.VERTEX_SHADER, source);
+    }
+    if (element.type === 'x-shader/x-fragment') {
+      return this.compileShader(glCtx.FRAGMENT_SHADER, source);
+    }
+    throw 'Unknown shader type ' + element.type;
+  }
+
+  linkProgram(shaders) {
+    const glCtx = this.getGLContext();
+    const rc = glCtx.createProgram();
+    for(var cnt = 0; cnt < shaders.length; cnt++) {
+      if (!shaders[cnt]) {
+        throw 'Can not link program with null shaders';
+      }
+      glCtx.attachShader(rc, shaders[cnt]);
+    }
+    glCtx.linkProgram(rc);
+    if (!glCtx.getProgramParameter(rc, glCtx.LINK_STATUS)) {
+      throw glCtx.getProgramInfoLog(rc);
+    }
+    return rc;
+  }
+
+  draw2DArray(type, name, arr) {
+    const glCtx = this.getGLContext();
+    const prog = glCtx.getParameter(glCtx.CURRENT_PROGRAM);
+    const idx = glCtx.getAttribLocation(prog, name);
+
+    var buf = glCtx.createBuffer();
+    glCtx.bindBuffer(glCtx.ARRAY_BUFFER, buf);
+    glCtx.bufferData(glCtx.ARRAY_BUFFER, new Float32Array(arr), glCtx.STATIC_DRAW);
+
+    glCtx.enableVertexAttribArray(idx);
+    glCtx.vertexAttribPointer(idx, 2, glCtx.FLOAT, false, 0, 0);
+
+    glCtx.drawArrays(type, 0, arr.length/2);
+    glCtx.deleteBuffer(buf);
+  }
+}
+
+function printMessage(msg) {
+  document.getElementById('floatingMsg').innerHTML=
+    '<div style="color:#FFFFFF;'+
+      'font-size:120%;margin-top:40%;'+
+      'margin-left:20%;margin-right:20%">' +
+      msg + '</div>';
+}
+function visualizeRoundoffs() {
+  try {
+    printMessage('Initializing WebGL context...');
+    const canvas = document.getElementById('canvas');
+    const ctx = new GLContext(canvas);
+    const prog = ctx.linkProgram(['passThruVS', 'renderFrac'].map(_ => ctx.compileShaderById(_)));
+    const gl = ctx.getGLContext();
+    gl.useProgram(prog);
+    ctx.draw2DArray(gl.TRIANGLE_STRIP, 'coord', [-1, -1, 1, -1, -1, 1, 1, 1]);
+    const pixelCount = 100;
+    const buf = new Uint8Array(4 * pixelCount);
+    gl.readPixels(0, 0, pixelCount, 1, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+    if (gl.getError())
+      throw "Failed to read pixels";
+    // Check for non-zero values in green channel
+    for(var cnt = 0; cnt < pixelCount; ++cnt) {
+      if (buf[cnt*4+1] != 0) {
+        printMessage('&#x1F44D;Shader compiler is aware of rounding errors.');
+        return;
+      }
+    }
+    printMessage('&#x1F494;Shader compiler lives in the world of the infinitely precision floats.');
+  } catch (e) { printMessage('WebGL context creation failed'); alert(e); }
+}
+
+</script>
+<body onLoad="visualizeRoundoffs();">
+  <div style="position:relative;">
+    <canvas id="canvas" width="512px" height="512px"></canvas>
+    <div id="floatingMsg" style="position:absolute;top:0px; left:0px; width:512px;height:512px"></div>
+  </div><br/>
+  If all you see above, is dull black stripe on a blue background, then WebGL fragment shader compiler decided that following two functions are identical:
+  <div>
+    <pre style="display:inline-block;padding:10px; border: 1px solid #777; background-color:#eee;vertical-align: middle;">
+  vec2 sum(float a, float b) {
+    float s = a + b;
+    float e = (b - (s-a)) + (a - (s-b));
+    return vec2(s, e);
+  }
+    </pre>
+    <div style="display:inline;font-size:200%;vertical-align: middle;">&#x2194;</div>
+    <pre style="display:inline-block;padding:10px; border: 1px solid #777; background-color:#eee;vertical-align: middle;">
+  vec2 sum(float a, float b) {
+    return vec2(a + b, 0.0);
+  }
+    </pre>
+  </div>
+  which is clearly not the case, when non-overlapping floats are added together (for example 1.0 and pow(2,-24)).<br>
+  When compiler does not assume rounding errors to be zero, resulting picture looks as follows:<br>
+  <img src="roundoffErrors.png" width="512px" height="512px" />
+</body>
+</html>
