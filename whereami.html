@@ -1,0 +1,61 @@
+<html>
+<head>
+<title>Orientation and Motion</title>
+<style>
+body  { font-size: 100%; }
+input { font-size: 100%; }
+table { font-size: 100%; }
+</style>
+</head>
+<script type="text/javascript">
+
+var compOrientation = {alpha: 0, beta: 0, gamma: 0};
+function onLoad() {
+  window.addEventListener('deviceorientation', function(event) {
+    document.getElementById('alpha').value = Math.round(event.alpha);
+    document.getElementById('beta').value = Math.round(event.beta);
+    document.getElementById('gamma').value = Math.round(event.gamma);
+  });
+
+  window.addEventListener('devicemotion', function(event) {
+    const accel = event.acceleration;
+
+    compOrientation.alpha += event.rotationRate.alpha*event.interval;
+    compOrientation.beta += event.rotationRate.beta*event.interval;
+    compOrientation.gamma += event.rotationRate.gamma*event.interval;
+
+    document.getElementById('ax').value = (100*accel.x).toFixed(2);
+    document.getElementById('ay').value = (100*accel.y).toFixed(2);
+    document.getElementById('az').value = (100*accel.z).toFixed(2);
+    document.getElementById('ralpha').value = event.rotationRate.alpha.toFixed();
+    document.getElementById('rbeta').value = event.rotationRate.beta.toFixed();
+    document.getElementById('rgamma').value = event.rotationRate.gamma.toFixed();
+
+    document.getElementById('calpha').value = Math.round(compOrientation.alpha);
+    document.getElementById('cbeta').value = Math.round(compOrientation.beta);
+    document.getElementById('cgamma').value = Math.round(compOrientation.gamma);
+
+  });
+}
+</script>
+<body onload='onLoad();'>
+<H3>Orientation</H3>
+<TABLE>
+<TR><TH>Angle</TH><TD>Event</TD><TD>Computed</TD></TR>
+<TR><TD>Alpha</TD><TD><INPUT id="alpha"/>&nbsp;deg</TD><TD><INPUT id="calpha"/>&nbsp;deg</TD></TR>
+<TR><TD>Beta</TD><TD><INPUT id="beta"/>&nbsp;deg</TD><TD><INPUT id="cbeta"/>&nbsp;deg</TD></TR>
+<TR><TD>Gamma</TD><TD><INPUT id="gamma"/>&nbsp;deg</TD><TD><INPUT id="cgamma"/>&nbsp;deg</TD></TR>
+</TABLE>
+<H3>Motion</H3>
+<TABLE>
+<TR><TD>Rot.Alpha</TD><TD><INPUT id="ralpha"/>&nbsp;deg/sec</TD></TR>
+<TR><TD>Rot.Beta</TD><TD><INPUT id="rbeta"/>&nbsp;deg/sec</TD></TR>
+<TR><TD>Rot.Gamma</TD><TD><INPUT id="rgamma"/>&nbsp;deg/sec</TD></TR>
+
+<TR><TD>Acc.x</TD><TD><INPUT id="ax"/>&nbsp;cm/sec2</TD></TR>
+<TR><TD>Acc.Y</TD><TD><INPUT id="ay"/>&nbsp;cm/sec2</TD></TR>
+<TR><TD>Acc.Z</TD><TD><INPUT id="az"/>&nbsp;cm/sec2</TD></TR>
+</TABLE>
+
+</BODY>
+</HTML>
