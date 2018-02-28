@@ -16,6 +16,8 @@ void main(void) {
 precision highp float;
 varying vec2 pos;
 
+const float THRESHOLD = 1e-1;
+
 
 struct PointLight {
   vec3 location;
@@ -46,10 +48,10 @@ float sqr(float x) { return x*x; }
 bool ObjectIntersect(in Object obj, in Ray ray, out float distance) {
   if (obj.type == 1 || obj.type == 3) {
     float cf = dot(obj.quat.xyz, ray.dir);
-    if (abs(cf) <1e-3)
+    if (abs(cf) < THRESHOLD)
       return false;
     distance = -( dot(obj.quat.xyz, ray.origin ) + obj.quat.w ) / cf;
-    return distance > 1e-3;
+    return distance >= THRESHOLD;
   }
   if (obj.type == 0 || obj.type == 2) {
     // Intersection of ray with sphere is a quadratic equation
@@ -65,9 +67,9 @@ bool ObjectIntersect(in Object obj, in Ray ray, out float distance) {
       return false;
     d4 = sqrt(d4);
     distance = ocd - d4;
-    if (distance <= 1e-3)
+    if (distance <= THRESHOLD)
       distance = ocd + d4;
-    return distance > 1e-3;
+    return distance >= THRESHOLD;
   }
   return false;
 }
@@ -169,18 +171,18 @@ void main(void) {
       if (Scene_Intersects(lightRay)) continue;
       float attenuation = sqr(lights[idx].attenuation)/dot(lightDir, lightDir);
       float angle = abs(dot(lightRay.dir, props.norm));
-      if (angle < 1e-3) continue;
+      if (angle < THRESHOLD) continue;
 
       // Add diffuse light component
-      if (props.diffuse > 1e-3)
+      if (props.diffuse >= THRESHOLD)
         color += weight*props.diffuse*angle*attenuation*lights[idx].color*props.color;
       // Add specular light component using Blinn–Phong reflection mode
-      if (props.specular > 1e-3) {
+      if (props.specular >= THRESHOLD) {
         vec3 halfway = normalize(lightRay.dir - ray.dir);
         color += weight*props.specular*attenuation*pow(dot(halfway, props.norm), 30.0)*lights[idx].color;
       }
     }
-    if (weight * props.reflect < 1e-3) {
+    if (weight * props.reflect < THRESHOLD) {
       break;
     }
     float viewAngle = dot(ray.dir, props.norm);
