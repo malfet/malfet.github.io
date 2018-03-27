@@ -1,0 +1,495 @@
+<HTML>
+<HEAD>
+  <TITLE>Macro Music Language in AudioContext</TITLE>
+</HEAD>
+<SCRIPT TYPE="text/javascript">
+
+const noteFrequences = [...Array(88).keys()].map(i => 440 * Math.pow(2, (i-49)/12));
+const noteName2Idx = {
+                      "C" : 0, "D" : 2, "E" : 4, "F" : 5, "G" : 7, "A": 9, "B" : 11,
+                      "C+" : 1, "D-" : 1, "D+" : 3, "E-" : 3, "F+" : 6, "G-": 6,
+                      "G+" : 8, "A-" : 8, "A+" : 10, "B-" : 10};
+
+// Tokenizes string into upper case chars and numbers
+class StringTokenizer {
+  constructor(str) {
+    this.str = str.toUpperCase();
+    this.pos = 0;
+    this._skipSpaces();
+  }
+  ended() { return this.pos >= this.str.length; }
+  _skipSpaces() {
+    const str = this.str;
+    let pos = this.pos;
+    while (pos < str.length && str[pos] === ' ')
+      pos++;
+    this.pos = pos;
+   }
+   nextToken() {
+     const str = this.str;
+     if (this.ended()) throw "EOF";
+     const start = this.pos;
+     while (!this.ended() && !isNaN(str[this.pos])) this.pos++;
+     let rc = start == this.pos ? str[this.pos++] : str.substring(start, this.pos);
+     this._skipSpaces();
+     return isNaN(rc) ? rc : Number(rc);
+   }
+   peekToken() {
+     if (this.ended()) return "";
+     const pos = this.pos;
+     const rc = this.nextToken();
+     this.pos = pos;
+     return rc;
+   }
+};
+
+class MMLTokenizer {
+  constructor(str) {
+   this.pos = 0;
+   this.tokens = [];
+   const stok = new StringTokenizer(str);
+   while(!stok.ended()) {
+     const tok = stok.nextToken();
+     const rc = {type: tok};
+     // Single letter commands
+     if ('<>'.indexOf(tok) >= 0) {
+       this.tokens.push(rc);
+        continue;
+     }
+     // Letter + Number commands
+     if ('LOSTV'.indexOf(tok) >= 0) {
+       const num = stok.nextToken();
+       if (typeof num !== 'number') throw "Parsing error";
+       rc.value = num;
+       this.tokens.push(rc);
+       continue;
+     }
+     if ('ABCDEFGR'.indexOf(tok) >= 0) {
+       let nt = stok.peekToken();
+       if (nt.length > 0 && '+-#'.indexOf(nt) >= 0) {
+         stok.nextToken();
+         if (tok === 'R') throw "Rest can't have pitch modifier";
+         rc.type += nt === '-' ? '-' : '+';
+         nt = stok.peekToken();
+       }
+       if (typeof nt === 'number') {
+         stok.nextToken();
+         rc.length = nt;
+         nt = stok.peekToken();
+       }
+       while (nt === '.') {
+         stok.nextToken();
+         rc.modifier += nt;
+         nt = stok.peekToken();
+       }
+       this.tokens.push(rc);
+       continue;
+     }
+     throw "Unexpected token " + tok;
+   }
+  }
+  ended() { return this.pos >= this.tokens.length; }
+  nextToken() {
+    if (this.ended()) throw "EOF";
+    return this.tokens[this.pos++];
+  }
+  tokens() { return Array(this.tokens);}
+};
+
+function clamp(x, min, max) {
+  return x > min ? x < max ? x : max : min;
+}
+
+function newAudioContext() {
+    const rc = new (typeof webkitAudioContext === 'function' ? webkitAudioContext : AudioContext)();
+    const compressor = rc.createDynamicsCompressor();
+    compressor.connect(rc.destination);
+    rc.compressorNode = compressor;
+    return rc;
+}
+
+class AudioChannel {
+   constructor(ctx) {
+    this.tempo = 120;
+    this.noteLength = 4;
+    this.octave = 4;
+    this.playbackEnabled = false;
+    this._createOscillatorAndGain(ctx);
+  }
+  _createOscillatorAndGain(ctx) {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.gain.value = .53;
+    osc.start();
+    this.gain = gain; this.osc = osc;
+    this.endOfStreamTime = ctx.currentTime;
+  }
+  // Measure is four qurter notes
+  measureLength() { return 4 * 60.0 / this.tempo; }
+  time() { return this.osc.context.currentTime;}
+  enablePlayback(enable) {
+    if (enable == this.playbackEnabled) {
+      return;
+    }
+    const ctx = this.osc.context;
+    if (enable) {
+      const destination = ctx.hasOwnProperty('compressorNode') ? ctx.compressorNode : ctx.destination;
+     this.gain.connect(destination);
+    } else {
+      this.gain.disconnect();
+      if (this.endOfStreamTime > this.time()) {
+        this._createOscillatorAndGain(ctx);
+      }
+    }
+    this.playbackEnabled = enable;
+  }
+  stop() { this.enablePlayback(false); }
+  start() { this.enablePlayback(true); }
+  setVolume(val, time) {
+    let gain = this.gain.gain;
+    time = time || this.time();
+    gain.setValueAtTime(clamp(val /15.0, gain.minValue, gain.maxValue), time);
+  }
+  setFreq(val, time) {
+    let freq = this.osc.frequency;
+    time = time || this.time();
+    freq.setValueAtTime(clamp(val, freq.minValue, freq.maxValue), time);
+  }
+  playNote(n) {
+   const measureLength = this.measureLength();
+   let noteLength = measureLength / this.noteLength;
+   let noteFreq = 0;
+   if (typeof n === 'object') {
+     if (n.hasOwnProperty('length'))
+       noteLength = measureLength / n.length;
+     if (n.hasOwnProperty('modifier'))
+        noteLength *= 1.5;
+     n = n.type;
+   }
+   if (typeof n === 'string') {
+      n = n.toUpperCase();
+      if (!noteName2Idx.hasOwnProperty(n)) throw "Unknown note";
+      n = (this.octave - 1)*12 + 4 + noteName2Idx[n];
+   }
+   if (typeof n === 'number') {
+      noteFreq = noteFrequences[clamp(n, 0, noteFrequences.length)];
+   }
+   const time = Math.max(this.time(), this.endOfStreamTime)
+   this.setFreq(noteFreq, time);
+   this.endOfStreamTime = time + noteLength;
+  }
+
+  play(str) {
+    const tokenStream = new MMLTokenizer(str);
+    while (!tokenStream.ended()) {
+      const tok = tokenStream.nextToken();
+      if (tok.type === '>') this.octave++;
+      if (tok.type === '<') this.octave--;
+      if (tok.type === 'O') this.octave = tok.value;
+      if (tok.type === 'T') this.tempo = tok.value;
+      if (tok.type === 'L') this.noteLength = tok.value;
+      if (tok.type === 'R') {
+        const pauseLength = tok.hasOwnProperty('length') ? tok.length : this.noteLength;
+        let pauseTime = this.measureLength() / pauseLength;
+        if (tok.hasOwnProperty('modifier')) pauseTime *= 1.5;
+        this.setFreq(0, this.endOfStreamTime);
+        this.endOfStreamTime += pauseTime;
+      }
+      if (noteName2Idx.hasOwnProperty(tok.type)) {
+        const self = this;
+        this.playNote(tok);
+      }
+    }
+    this.setFreq(0, this.endOfStreamTime);
+    this.start();
+  }
+};
+
+function getMazeOfGaliousMML() {
+  const mml = ['', '', ''];
+  mml[0] += 'V15T140L4D4.L16FGL4AO5D';
+  mml[1] += 'V14T140L4O3AL8AL16O4DEL4FA';
+  mml[2] += 'v15T140L8O3DL16DDL8CCL8O2A#L16A#A#L8AL16AA';
+  mml[0] += 'CO4G2.';
+  mml[1] += 'GE2.';
+  mml[2] += 'L8O3CL16CCL8O2GL16GGL8O3CL16CCL8O2GL16GG';
+  mml[0] += 'A#L8A#L16AGL4A#L8A#L16AG';
+  mml[1] += 'GL8GL16FD#L4GL8GL16FD#';
+  mml[2] += 'L8O3D#L16D#D#L8O2A#L16A#A#L8O3D#L16D#D#L8O2A#L16A#A#';
+  mml[0] += 'L4AD2.';
+  mml[1] += 'L4FO3A2.';
+  mml[2] += 'L8O3DL16DDL8CL16CCL8O2A#L16A#A#L8AL16AA';
+  mml[0] += 'DL8DL16FGL4AO5D';
+  mml[1] += 'AL8AL16O4DEL4FG';
+  mml[2] += 'L8O3DL16DDL8CL16CCL8O2A#L16A#A#L8AL16AA';
+  mml[0] += 'EO4A2.';
+  mml[1] += 'AR8L16EDC#DEFGR16O5CR16';
+  mml[2] += 'L8O3CL16CCL8O2A#L16A#A#L8AL16AAL8GL16GG';
+  mml[0] += 'A#L8A#L16AGL4A#L8A#L16AG';
+  mml[1] += 'L4O4GL8GL16FD#L4GL8GL16FD#';
+  mml[2] += 'L8GL16GGL8AL16AAL8A#L16A#A#L8O3CL16CC';
+  mml[0] += 'L4AO5D2.';
+  mml[1] += 'L4F4R2';
+  mml[2] += 'L8DL16DDL8DL16DDL8DL16DDL8DL16DD';
+  mml[0] += 'O4A#8.R16L16A#AGFL4GA#';
+  mml[1] += 'GR4D#G';
+  mml[2] += 'D#D#D#D#R4L8D#L16D#D#L8D#L16D#D#';
+  mml[0] += 'AL2DL16EFL8G';
+  mml[1] += 'FL2O3AR4';
+  mml[2] += 'L8DL16DDL8CL16CCL8O2A#L16A#A#L8AL16AA';
+  mml[0] += 'L4G#8.R16L16G#GFD#L4FG#';
+  mml[1] += 'L4O4FR4D#F';
+  mml[2] += 'G#G#G#G#R4L8G#L16G#G#L8G#L16G#G#';
+  mml[0] += 'GC2.';
+  mml[1] += 'CL2O3GR4';
+  mml[2] += 'L8O3CL16CCL8DL16DDL8D#L16D#D#L8FL16FF';
+  mml[0] += 'A#8.R16L16A#AGFL4GA#';
+  mml[1] += 'L4O4GR4D#G';
+  mml[2] += 'D#D#D#D#R4L8D#L16D#D#L8D#L16D#D#';
+  mml[0] += 'A8.R16L16AGFEL4FA';
+  mml[1] += 'FR4DF';
+  mml[2] += 'DDDDR4L8DL16DDL8DL16DD';
+  mml[0] += 'G8.R16L16GFEDL4G#8.R16L16G#GFE';
+  mml[1] += 'ER4FR4';
+  mml[2] += 'O2GGGGR4G#G#G#G#R4';
+  mml[0] += 'A2.EFGA';
+  mml[1] += 'EC#O3AR4';
+  mml[2] += 'AO3AO2AAL8AL16AAL8AL16AAAAAA';
+  mml[0] += 'L4O5DEL8FL16EDL8EO4A';
+  mml[1] += 'L1O4A';
+  mml[2] += 'L8O3DL16DDL8CL16CCL8O2A#L16A#A#L8AL16AA';
+  mml[0] += 'L4O5CDL8EL16DCL8DO4G';
+  mml[1] += 'L8AGG2.';
+  mml[2] += 'L8O3CL16CCL8O2GL16GGL8O3CL16CCL8O2GL16GG';
+  mml[0] += 'L4O5D#FL8GL16FD#L8FO4A#';
+  mml[1] += 'GA#A#2.';
+  mml[2] += 'L8O3D#L16D#D#L8O2A#L16A#A#L8O3D#L16D#D#L8O2A#L16A#A#';
+  mml[0] += 'L16O5DEFGV14DEFGV13DEFGV12DEFG';
+  mml[1] += 'V14L16R16O5DEFGV13DEFGV12DEFGV11DEFV14';
+  mml[2] += 'L8O3DL16DDL8CL16CCL8O2A#L16A#A#L8AL16AA';
+  mml[0] += 'V15L4DEL8FL16EDL8EO4A';
+  mml[1] += 'V14O4L1A';
+  mml[2] += 'L8O3DL16DDL8CL16CCL8O2A#L16A#A#L8AL16AA';
+  mml[0] += 'L4O5CDL8EL16DCL8DO4G';
+  mml[1] += 'L8AGG2.';
+  mml[2] += 'L8O3CL16CCL8O2GL16GGL8O3CL16CCL8O2GL16GG';
+  mml[0] += 'L4O5D#FL8GL16FD#L8FO4A#';
+  mml[1] += 'GA#A#2.';
+  mml[2] += 'L8O3D#L16D#D#L8O2A#L16A#A#L8O3D#L16D#D#L8O2A#L16A#A#';
+  mml[0] += 'L16O5DEFGV14DEFGV13DEFGV12DEFG';
+  mml[1] += 'V14L16R16O5DEFGV13DEFGV12DEFGV11DEFV14';
+  mml[2] += 'L8O3DL16DDL8CL16CCL8O2A#L16A#A#L8AL16AA';
+  mml[0] += 'S0L8O4DL16DDL8DL16DDDO3AO4CFEO3AO4CD';
+  mml[1] += 'S0O2D8L16DDL8DL16DDDO1AO2CFEO1AO2CD';
+  mml[2] += 'L8O3DL16DDL8DL16DDDO2AO3CFEO2AO3CD';
+  mml[0] += 'L8O3GL16GGL8GL16GGO4GDFA#ADFG';
+  mml[1] += 'L8O1GL16GGL8GL16GGO2GDFA#ADFG';
+  mml[2] += 'L8O2GL16GGL8GL16GGO3GDFA#ADFG';
+  mml[0] += 'L8DL16DDL8DL16DDDO3AO4CFEO3AO4CD';
+  mml[1] += 'L8DL16DDL8DL16DDDO1AO2CFEO1AO2CD';
+  mml[2] += 'L8DL16DDL8DL16DDDO2AO3CFEO2AO3CD';
+  return mml;
+}
+
+function getFurEliseMML() {
+  const mml = ['l16t100v15o5', 'l16t100v15o5', 'l16t100v15o5'];
+
+  mml[0] += 'o5 ed#';
+  mml[1] += 'o3 r8';
+  mml[2] += 'o3 r8';
+  mml[0] += 'o5 ed#e<b>dc  <a8r16cea   b8r16eg#b   >c8r16<e>ed#';
+  mml[1] += 'o4 r4.        r4.       r4.       r4.';
+  mml[2] += 'o3 r4.        <a>ear16r8  <e>eg#r16r8 <a>ear16r8';
+  mml[0] += 'o5 ed#e<b>dc  <a8r16cea   b8r16e>c<b  a4';
+  mml[1] += 'o4 r4.        r4.       r4.       r4';
+  mml[2] += 'o3 r4.        <a>ear16r8  <e>eg#r16r8 <a>ear16';
+  mml[0] += 'o5 ed#e<b>dc  <a8r16cea   b8r16eg#b   >c8r16<e>ed#';
+  mml[1] += 'o4 r4.        r4.       r4.       r4.';
+  mml[2] += 'o3 r4.        <a>ear16r8  <e>eg#r16r8 <a>ear16r8';
+  mml[0] += 'o5 ed#e<b>dc  <a8r16cea   b8r16e>c<b  a8r16b>cd';
+  mml[1] += 'o4 r4.        r4.       r4.       r4.';
+  mml[2] += 'o3 r4.        <a>ear16r8  <e>eg#r16r8 <a>ear16r8';
+// 190 '* 2nd of first repeat *
+  mml[0] += 'o5 e8.<g>fe   d8.<f>ed  c8.<e>dc  <b8r16e>er16  r16e>er16r16<d#';
+  mml[1] += 'o4 r4.        r4.       r4.       r4.       r4.';
+  mml[2] += 'o3 cg>c<r16r8   <g>gbr16r8  <a>ear16r8  <e>e>er16r16e >er16r16d#er16';
+  mml[0] += 'o5 er16r16d#ed#   ed#e<b>dc <a8r16cea   b8r16eg#b   >c8r16<e>ed#';
+  mml[1] += 'o4 r4.        r4.       r4.       r4.       r4.';
+  mml[2] += 'o5 r16d#er16r8    r4.    o3 <a>ear16r8  <e>eg#r16r8 <a>ear16r8 ';
+  mml[0] += 'o5 ed#e<b>dc  <a8r16cea   b8r16e>c<b  a8r16b>cd';
+  mml[1] += 'o4 r4.        r4.       r4.       r4.';
+  mml[2] += 'o3 r4.        <a>ear16r8  <e>eg#r16r8 <a>ear16r8';
+  mml[0] += 'o5 e8.<g>fe   d8.<f>ed  c8.<e>dc  <b8r16e>er16  r16e>er16r16<d#';
+  mml[1] += 'o4 r4.        r4.       r4.       r4.       r4.';
+  mml[2] += 'o3 cg>c<r16r8   <g>gbr16r8  <a>ear16r8  <e>e>er16r16e >er16r16d#er16';
+  mml[0] += 'o5 er16r16d#ed#   ed#e<b>dc <a8r16cea   b8r16eg#b   >c8r16<e>ed#';
+  mml[1] += 'o4 r4.        r4.       r4.       r4.        r4.';
+  mml[2] += 'o5 r16d#er16r8    r4.    o3 <a>ear16r8  <e>eg#r16r8 <a>ear16r8 ';
+  mml[0] += 'o5 ed#e<b>dc  <a8r16cea   b8r16e>c<b  a8r16';
+  mml[1] += 'o4 r4.        r4.       r4.       r16r16r16';
+  mml[2] += 'o3 r4.        <a>ear16r8  <e>eg#r16r8 <a>ea';
+  mml[0] += 'o5 <efg';
+  mml[1] += 'o4 cc<b';
+  mml[2] += 'o3 b-ag';
+// 410 '* 2nd of second repeat; first non-theme phrase: *
+  mml[0] += 'o5 c4f.e32    e8d8b-.a32    agfedc        <b-8a8a32g32a32b-32 >c4dd#';
+  mml[1] += 'o3 r4.        r4.           r8gr16gr16        r4.                r4.';
+  mml[2] += 'o3 fa>c<a>c<a fb->d<b->d<b- f>e<b->e<b->e fa>c<a>c<a         fa>c<a>c<a';
+  mml[0] += 'o5 e8.ef<a    >c8d32c32<b32>c32d.b32 ';
+  mml[1] += 'o3 r4dr16       r4.';
+  mml[2] += 'o3 ea>c<a>b<f g>e<g>e<g>f';
+  mml[0] += 'o5 l32 cg<g>g<a>g<b>gcgdg eg>c<bagfedgfd';
+  mml[1] += 'o4 l16 e8r16ggf             e8<a8b8';
+  mml[2] += 'o3     >c8r16fed            c8<f8g8';
+  mml[0] += 'o5 l32 cg<g>g<a>g<b>gcgdg eg>c<bagfedgfd efed#e<b>ede<b>ed';
+  mml[1] += 'o4 l16 r8r16ggf             e8<a8b8        b8r4';
+  mml[2] += 'o3     >c8r16fed            c8<f8g8        g#8r4';
+  mml[0] += 'o5 l16e8.<b>ed# e8.<b>er16  r16d#er16r16d# ed#e<b>dc ';
+  mml[1] += 'o4 r4.       r4.       r4.      r4.';
+  mml[2] += 'o3 r4.       r4r16 o5 d# er16r16d#er16  r4.';
+// 570 '* return to main theme * 
+  mml[0] += 'o5 <a8r16cea   b8r16eg#b    >c8r16<e>ed# ';
+  mml[1] += 'o4 r4.       r4.        r4.';
+  mml[2] += 'o3 <a>ear16r8  <e>eg#r16r8  <a>ear16r8';
+  mml[0] += 'o5 ed#e<b>dc  <a8r16cea   b8r16e>c<b  a8r16b>cd';
+  mml[1] += 'o4 r4.        r4.       r4.       r4.';
+  mml[2] += 'o3 r4.        <a>ear16r8  <e>eg#r16r8 <a>ear16r8';
+  mml[0] += 'o5 e8.<g>fe   d8.<f>ed  c8.<e>dc  <b8r16e>er16  r16e>er16r16<d#';
+  mml[1] += 'o4 r4.        r4.       r4.       r4.       r4.';
+  mml[2] += 'o3 cg>c<r16r8   <g>gbr16r8  <a>ear16r8  <e>e>er16r16e >er16r16d#er16';
+  mml[0] += 'o5 er16r16d#ed#   ed#e<b>dc <a8r16cea   b8r16eg#b   >c8r16<e>ed#';
+  mml[1] += 'o4 r4.        r4.       r4.       r4.       r4.';
+  mml[2] += 'o5 r16d#er16r8    r4.    o3 <a>ear16r8  <e>eg#r16r8 <a>ear16r8 ';
+  mml[0] += 'o5 ed#e<b>dc  <a8r16cea   b8r16e>c<b  ';
+  mml[1] += 'o4 r4.        r4.       r4.       ';
+  mml[2] += 'o3 r4.        <a>ear16r8  <e>eg#r16r8 ';
+// 730 '* second non-theme phrase: *
+  mml[0] += 'o4 a4.     >c#4.  d4ef     f4f8    e4.';
+  mml[1] += 'o4 r4.     g4.    a4>c#d   <g#4g#8 >c4.';
+  mml[2] += 'o3 <aaaaaa aaaaaa aaaaaa   aaaaaa  aaaaaa';
+  mml[0] += 'o5 d4c<b   a4a8         a8>c8<b8 a4.';
+  mml[1] += 'o3 <aaaaaa aaaaaa       aaaag#g# >>c4. ';
+  mml[2] += 'o3 <dddddd d#d#d#d#d#d# eeeeee   aaaaaa';
+  mml[0] += 'o5 c#4.    d4ef     f4f8    f4.';
+  mml[1] += 'o4 g4.     a4>c#d   d4d8    d4.';
+  mml[2] += 'o3 <aaaaaa aaaaaa   aaaaaa  b-b-b-b-b-b-';
+  mml[0] += 'o5 e-4dc        <b-4a8       g#4g#8  a4r8';
+  mml[1] += 'o4 g4fe-        d4d8         f4f8   e4r8';
+  mml[2] += 'o3 b-b-b-b-b-b- b-b-b-b-b-b- bbbbbb >c4r8';
+  mml[0] += 'o5 <d8r8r8   l21 <a>c32ea>c32edc32<b a>c32ea>c32edc32<b a>c32ea>c32edc32<b';
+  mml[1] += 'o4 <g#8r8r8> l8  <r16r16c>                cr16c                cr16c';
+  mml[2] += 'o3 e8r8r8        <<a>>r16a            ar16a                ar16a';
+  mml[0] += 'o6 l21 b-a32g#gf#32fed#32d c#c32<bb-a32g#gf#32f l16 ed#e<b>dc ';
+  mml[1] += 'o4 l8  cr16r16                 r16r16r16                      r16r16r16';
+  mml[2] += 'o3     ar16r16                 r16r16r16                      r16r16r16';
+// 920 '* final return to theme: *
+  mml[0] += 'l16';
+  mml[1] += 'L16';
+  mml[2] += 'l16';
+  mml[0] += 'o5 <a8r16cea   b8r16eg#b    >c8r16<e>ed# ';
+  mml[1] += 'o4 r4.       r4.        r4.';
+  mml[2] += 'o3 <a>ear16r8  <e>eg#r16r8  <a>ear16r8';
+  mml[0] += 'o5 ed#e<b>dc  <a8r16cea   b8r16e>c<b  a8r16b>cd';
+  mml[1] += 'o4 r4.        r4.       r4.       r4.';
+  mml[2] += 'o3 r4.        <a>ear16r8  <e>eg#r16r8 <a>ear16r8';
+  mml[0] += 'o5 e8.<g>fe   d8.<f>ed  c8.<e>dc  <b8r16e>er16  r16e>er16r16<d#';
+  mml[1] += 'o4 r4.        r4.       r4.       r4.       r4.';
+  mml[2] += 'o3 cg>c<r16r8   <g>gbr16r8  <a>ear16r8  <e>e>er16r16e >er16r16d#er16';
+  mml[0] += 'o5 er16r16d#ed#   ed#e<b>dc <a8r16cea   b8r16eg#b   >c8r16<e>ed#';
+  mml[1] += 'o4 r4.        r4.       r4.       r4.       r4.';
+  mml[2] += 'o5 r16d#er16r8    r4.    o3 <a>ear16r8  <e>eg#r16r8 <a>ear16r8 ';
+  mml[0] += 'o5 ed#e<b>dc  <a8r16cea   b8r16e>c<b  a4';
+  mml[1] += 'o4 r4.        r4.       r4.       c4';
+  mml[2] += 'o3 r4.        <a>ear16r8  <e>eg#r16r8 >a4';
+
+  return   mml;
+}
+
+
+function updateProgress() {
+  const chA = audioChannels[0];
+  if (chA.time() > chA.endOfStreamTime) {
+    for(let i = 0; i < audioChannels.length;++i) {
+      audioChannels[i].stop();
+    }
+    clearInterval(intervalID);
+    document.getElementById('button').value = 'Play';
+    return;
+  }
+  const progress = document.getElementById('progress');
+  progress.value = chA.time();
+  const chAFreq = document.getElementById('chA.freq');
+  const chBFreq = document.getElementById('chB.freq');
+  const chCFreq = document.getElementById('chC.freq');
+  chAFreq.value = chA.osc.frequency.value.toFixed(2);
+  chBFreq.value = audioChannels[1].osc.frequency.value.toFixed(2);
+  chCFreq.value = audioChannels[2].osc.frequency.value.toFixed(2);
+}
+
+var ctx = newAudioContext();
+var audioChannels = [...Array(4).keys()].map(function() {return new AudioChannel(ctx)});
+var intervalID = -1;
+
+function onButtonClicked() {
+  const button = document.getElementById('button');
+  if (button.value === 'Play') {
+    const startTime = ctx.currentTime;
+    const mmls = [
+      document.getElementById('chA.MML').value,
+      document.getElementById('chB.MML').value,
+      document.getElementById('chC.MML').value,
+    ];
+    for(let i = 0; i < mmls.length;++i)
+      audioChannels[i].play(mmls[i], startTime);
+    const progress = document.getElementById('progress');
+    progress.min = startTime;
+    progress.value = startTime;
+    progress.max = audioChannels[0].endOfStreamTime;
+    intervalID = setInterval(updateProgress, 10);
+    button.value = 'Stop';
+  } else {
+    button.value = 'Play';
+    clearInterval(intervalID);
+    for(let i = 0; i < audioChannels.length; i++)
+      audioChannels[i].stop();
+  }
+}
+
+function onSelectionChanged() {
+   const value = document.getElementById('musicSelect').value;
+   const mmls = value === 'furelise' ? getFurEliseMML() : getMazeOfGaliousMML();
+   document.getElementById('chA.MML').value = mmls[0];
+   document.getElementById('chB.MML').value = mmls[1];
+   document.getElementById('chC.MML').value = mmls[2];
+}
+
+function onLoad() {
+  onSelectionChanged();
+  onButtonClicked();
+}
+</SCRIPT>
+<BODY onLoad="onLoad();">
+<H4>MSX Music Macro Language Interpreter using WebAudio</H4>
+<TABLE>
+<TR><TD>Progress</TD><TD><INPUT TYPE="range" id="progress" style="width:100%" min="0" max="10000" value="0" /></TD></TR>
+<TR><TD>Channel&nbsp;A</TD><TD>Freq: <INPUT id="chA.freq" /></TD></TR>
+<TR><TD>Channel&nbsp;B</TD><TD>Freq: <INPUT id="chB.freq" /></TD></TR>
+<TR><TD>Channel&nbsp;C</TD><TD>Freq: <INPUT id="chC.freq" /></TD></TR>
+</TABLE>
+<TABLE>
+<TR><TD>Channel&nbsp;A&nbsp;MML</TD><TD><TEXTAREA id="chA.MML" rows="3" cols="50"/></TEXTAREA></TD></TR>
+<TR><TD>Channel&nbsp;B&nbsp;MML</TD><TD><TEXTAREA id="chB.MML" rows="3" cols="50"/></TEXTAREA></TD></TR>
+<TR><TD>Channel&nbsp;C&nbsp;MML</TD><TD><TEXTAREA id="chC.MML" rows="3" cols="50"/></TEXTAREA></TD></TR>
+<TR>
+  <TD><INPUT TYPE="submit" id="button" value="Play" onCLick="onButtonClicked()"></TD>
+  <TD>
+    <select id="musicSelect" onChange="onSelectionChanged()" >
+      <option value="mgaTheme">Maze of Galious</option>
+      <option value="furelise">Fur Elise</option>
+    </select>
+  </TD>
+</TR>
+</TABLE>
+</BODY>
+</HTML>
