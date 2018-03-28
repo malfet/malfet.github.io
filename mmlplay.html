@@ -52,7 +52,7 @@ class MMLTokenizer {
      const tok = stok.nextToken();
      const rc = {type: tok};
      // Single letter commands
-     if ('<>'.indexOf(tok) >= 0) {
+     if ('<>&'.indexOf(tok) >= 0) {
        this.tokens.push(rc);
         continue;
      }
@@ -139,7 +139,9 @@ class AudioChannel {
     } else {
       this.gain.disconnect();
       if (this.endOfStreamTime > this.time()) {
+        const oscType = this.osc.type;
         this._createOscillatorAndGain(ctx);
+        this.osc.type = oscType;
       }
     }
     this.playbackEnabled = enable;
@@ -310,7 +312,7 @@ function getFurEliseMML() {
   mml[0] += 'o5 ed#e<b>dc  <a8r16cea   b8r16e>c<b  a8r16b>cd';
   mml[1] += 'o4 r4.        r4.       r4.       r4.';
   mml[2] += 'o3 r4.        <a>ear16r8  <e>eg#r16r8 <a>ear16r8';
-// 190 '* 2nd of first repeat *
+  //* 2nd of first repeat *
   mml[0] += 'o5 e8.<g>fe   d8.<f>ed  c8.<e>dc  <b8r16e>er16  r16e>er16r16<d#';
   mml[1] += 'o4 r4.        r4.       r4.       r4.       r4.';
   mml[2] += 'o3 cg>c<r16r8   <g>gbr16r8  <a>ear16r8  <e>e>er16r16e >er16r16d#er16';
@@ -332,7 +334,7 @@ function getFurEliseMML() {
   mml[0] += 'o5 <efg';
   mml[1] += 'o4 cc<b';
   mml[2] += 'o3 b-ag';
-// 410 '* 2nd of second repeat; first non-theme phrase: *
+  //* 2nd of second repeat; first non-theme phrase: *
   mml[0] += 'o5 c4f.e32    e8d8b-.a32    agfedc        <b-8a8a32g32a32b-32 >c4dd#';
   mml[1] += 'o3 r4.        r4.           r8gr16gr16        r4.                r4.';
   mml[2] += 'o3 fa>c<a>c<a fb->d<b->d<b- f>e<b->e<b->e fa>c<a>c<a         fa>c<a>c<a';
@@ -348,7 +350,7 @@ function getFurEliseMML() {
   mml[0] += 'o5 l16e8.<b>ed# e8.<b>er16  r16d#er16r16d# ed#e<b>dc ';
   mml[1] += 'o4 r4.       r4.       r4.      r4.';
   mml[2] += 'o3 r4.       r4r16 o5 d# er16r16d#er16  r4.';
-// 570 '* return to main theme * 
+  //* return to main theme *
   mml[0] += 'o5 <a8r16cea   b8r16eg#b    >c8r16<e>ed# ';
   mml[1] += 'o4 r4.       r4.        r4.';
   mml[2] += 'o3 <a>ear16r8  <e>eg#r16r8  <a>ear16r8';
@@ -364,7 +366,7 @@ function getFurEliseMML() {
   mml[0] += 'o5 ed#e<b>dc  <a8r16cea   b8r16e>c<b  ';
   mml[1] += 'o4 r4.        r4.       r4.       ';
   mml[2] += 'o3 r4.        <a>ear16r8  <e>eg#r16r8 ';
-// 730 '* second non-theme phrase: *
+  //* second non-theme phrase: *
   mml[0] += 'o4 a4.     >c#4.  d4ef     f4f8    e4.';
   mml[1] += 'o4 r4.     g4.    a4>c#d   <g#4g#8 >c4.';
   mml[2] += 'o3 <aaaaaa aaaaaa aaaaaa   aaaaaa  aaaaaa';
@@ -383,7 +385,7 @@ function getFurEliseMML() {
   mml[0] += 'o6 l21 b-a32g#gf#32fed#32d c#c32<bb-a32g#gf#32f l16 ed#e<b>dc ';
   mml[1] += 'o4 l8  cr16r16                 r16r16r16                      r16r16r16';
   mml[2] += 'o3     ar16r16                 r16r16r16                      r16r16r16';
-// 920 '* final return to theme: *
+  //* final return to theme: *
   mml[0] += 'l16';
   mml[1] += 'L16';
   mml[2] += 'l16';
@@ -403,7 +405,101 @@ function getFurEliseMML() {
   mml[1] += 'o4 r4.        r4.       r4.       c4';
   mml[2] += 'o3 r4.        <a>ear16r8  <e>eg#r16r8 >a4';
 
-  return   mml;
+  return mml.map(s => s.replace(/ /g,''));
+}
+
+function getHiNoToriMML() {
+  const mml = ['l4t110v15o5', 'l4t110v15o5', 'l4t110v15o3'];
+
+  mml[0] += 'V14L16E2&E8R16EDC<B>C';
+  mml[1] += 'V12L16C2&C8R16C<BAGA';
+  mml[2] += 'V13L16AA>A<AAA>A<AAA>A<AAA>A<A';
+  mml[0] += 'D8C<A2>EDC<B>C';
+  mml[1] += 'B8AF2>C<BAGA';
+  mml[2] += 'FF>F<FFF>F<FFF>F<FFF>F<F';
+  mml[0] += 'D8C<A&A4A8>C<B8.GE';
+  mml[1] += 'B8GD&D4&D8AG8.DC';
+  mml[2] += 'GG>G<GGG>G<GGG>G8<G#G#>G#8';
+  mml[0] += 'E8BA&A4EGAB>DEGA';
+  mml[1] += 'C8GE&E4<B>DEGAB>DE';
+  mml[2] += '<AA>A<AAA>A<AEGAB>DEGA';
+  mml[0] += 'E2&E8R16AEDCC#';
+  mml[1] += 'C2&C8R16EC<BGA';
+  mml[2] += '<AA>A<AAA>A<AAA>A<AAA>A<A';
+  mml[0] += 'D8C<A2>EDC<B>C';
+  mml[1] += 'B8AF2>C<BAGA';
+  mml[2] += 'FF>F<FFF>F<FFF>F<FFF>F<F';
+  mml[0] += 'D8C<A&A4A8>C<B8.GE';
+  mml[1] += 'B8GD&D4D8AG8.DC';
+  mml[2] += 'GG>G<GGG>G<GGG>G8<G#G#>G#8';
+  mml[0] += 'E8BA&A4R2';
+  mml[1] += 'C8GE&E4R2';
+  mml[2] += '<AA>A<AAA>A<AA>A<G>G<E>E<G>G';
+
+  mml[0] += 'RAL8B>C<AB>C';
+  mml[1] += 'RFL8GAFGA';
+  mml[2] += '<F>CF<FFFFFFF>CF<FFF';
+  mml[0] += '<B4R16B16>CD<B>CD';
+  mml[1] += 'G4R16G16ABGAB';
+  mml[2] += 'GG>DG<GGGGGGG>DG<GGG';
+  mml[0] += 'C4R16C16DECDE';
+  mml[1] += 'A4R16A16B>C<AB>C';
+  mml[2] += 'AA>EA<AAAAAAA>EA<AAA>';
+  mml[0] += 'L16G&G2.FEDC';
+  mml[1] += 'L16E&E2.DC<BA';
+  mml[2] += 'CCC>C<CCCCCCC>C<CC<BAG';
+  mml[0] += '<A4.GA4R16AB>C<A';
+  mml[1] += 'F4.EF4R16FGAF';
+  mml[2] += 'F>CF<FFFFFFF>CF<FFFG';
+  mml[0] += 'B4>D4<G#B>DFDFG#B';
+  mml[1] += 'G4B4FG#B>D<B>DFG#';
+  mml[2] += 'GG>G<GGGGGG#G>G#8<G#G#>G#8';
+
+  mml[0] += 'AAAAR8GA&A4CDEG';
+  mml[1] += 'EEEER8DE&E4<AB>CE';
+  mml[2] += '<AA>A<AAA>A<AAA>A<AAA>A<A';
+  mml[0] += 'AAAAR8GA&A4CDEF';
+  mml[1] += 'FFFFR8EF&F4<AB>CD';
+  mml[2] += 'FF>F<FFF>F<FFF>F<FFF>F<F';
+  mml[0] += 'GGD<B>G2FEFD';
+  mml[1] += 'DD<BG>D2DC#D<B';
+  mml[2] += 'GG>G<GGG>G8<GG>G8<G#G#>G#8';
+  mml[0] += 'E2FC<A>FGD<B>G';
+  mml[1] += '>C2C<AF>CD<BG>D';
+  mml[2] += '<AA>A<AAA>A<AFF>F<FGG>G<G';
+  mml[0] += 'AAAAR8GA&A4CDEG';
+  mml[1] += 'EEEER8DE&E4<AB>CE';
+  mml[2] += 'AA>A<AAA>A<AAA>A<AAA>A<A';
+  mml[0] += 'AAAAR8GA&A4CDEF';
+  mml[1] += 'FFFFR8EF&F4<AB>CD';
+  mml[2] += 'FF>F<FFF>F<FFF>F<FFF>F<F';
+  mml[0] += 'GGD<B>GGD<B>G#G#D<B>G#G#D<B';
+  mml[1] += 'DD<BG>DD<BG>DD<BG#>DD<BG#';
+  mml[2] += 'GG>G<GGG>G<GG#G#>G#<G#G#G#>G#<G#';
+
+  mml[0] += '>A>C<AGA2CDEG';
+  mml[1] += 'R32>A>C<AGA2CDE';
+  mml[2] += 'A>A<A>A<A>A<A>A<A>A<A>A<A>A<G>G';
+  mml[0] += 'A>C<AGA2CDEF';
+  mml[1] += 'R32A>C<AGA2CDE';
+  mml[2] += '<F>F<F>F<F>F<F>F<F>F<F>F<F>F<F#>F#';
+  mml[0] += 'GGD<B>GGR16G4GFEFD';
+  mml[1] += 'V13R16DDBDDR16D4DR32FEF';
+  mml[2] += '<G>G<G>G<G>G<G>G<G>G<G>G<G#>G#<G#>G#';
+  mml[0] += 'E2FC<A>FGD<B>G';
+  mml[1] += 'R16E4.&EV11C<AF>CD<BG>D';
+  mml[2] += '<A>A<A>A<A>A<G>G<F>F<F>F<G>G<G>G';
+  mml[0] += 'A>CV13<AGV11A>CV10<AGV14A4CDEG';
+  mml[1] += 'R16V11A>CV10<AGV8A>C<V7AGV11A4CDE';
+  mml[2] += '<A>A<A>A<A>A<A>A<A>A<A>A<A>A<G>G';
+  mml[0] += 'A>CV13<AGV11A>CV10<AGV14A4CDEF';
+  mml[1] += 'R16A>CV10<AGV8A>C<V7AGV11A4CDE';
+  mml[2] += '<F>F<F>F<F>F<F>F<F>F<F>F<F>F<F#>F#';
+  mml[0] += 'GGD<B>GGD<B>G#G#D<B>G#G#D<B';
+  mml[1] += 'V13DD<BG>DD<BG>DD<BG#>DD<BG#';
+  mml[2] += '<G>G<G>G<G>G<G>G<G#>G#<G#>G#<G#>G#<G#>G#';
+
+  return mml;
 }
 
 
@@ -458,16 +554,25 @@ function onButtonClicked() {
 
 function onSelectionChanged() {
    const value = document.getElementById('musicSelect').value;
-   const mmls = value === 'furelise' ? getFurEliseMML() : getMazeOfGaliousMML();
+   const mmls = value === 'furelise' ? getFurEliseMML() : value === 'hinotori' ? getHiNoToriMML() : getMazeOfGaliousMML();
    document.getElementById('chA.MML').value = mmls[0];
    document.getElementById('chB.MML').value = mmls[1];
    document.getElementById('chC.MML').value = mmls[2];
 }
 
+function onWaveformChanged(chId, chNo) {
+  const value = document.getElementById(chId).value;
+  audioChannels[chNo].osc.type = value;
+}
+
 function onLoad() {
   onSelectionChanged();
-  onButtonClicked();
+  const runningOniOS = navigator.platform && /iPhone|iPad/.test(navigator.platform);
+  if (!runningOniOS) {
+    onButtonClicked();
+  }
 }
+
 </SCRIPT>
 <BODY onLoad="onLoad();">
 <H4>MSX Music Macro Language Interpreter using WebAudio</H4>
@@ -478,15 +583,50 @@ function onLoad() {
 <TR><TD>Channel&nbsp;C</TD><TD>Freq: <INPUT id="chC.freq" /></TD></TR>
 </TABLE>
 <TABLE>
-<TR><TD>Channel&nbsp;A&nbsp;MML</TD><TD><TEXTAREA id="chA.MML" rows="3" cols="50"/></TEXTAREA></TD></TR>
-<TR><TD>Channel&nbsp;B&nbsp;MML</TD><TD><TEXTAREA id="chB.MML" rows="3" cols="50"/></TEXTAREA></TD></TR>
-<TR><TD>Channel&nbsp;C&nbsp;MML</TD><TD><TEXTAREA id="chC.MML" rows="3" cols="50"/></TEXTAREA></TD></TR>
+<TR><TH>Channel</TH><TH>MML</TH><TH>Waveform</TH></TR>
+<TR>
+  <TD>A</TD>
+  <TD><TEXTAREA id="chA.MML" rows="3" cols="50"/></TEXTAREA></TD>
+  <TD>
+    <SELECT id="chA.WF" onChange="onWaveformChanged('chA.WF', 0)">
+      <OPTION value="sine">Sine</OPTION>
+      <OPTION value="square"/>Square</OPTION>
+      <OPTION value="sawtooth">Sawtooth</OPTION>
+      <OPTION value="triangle">Triangle</OPTION>
+   </SELECT>
+  </TD>
+</TR>
+<TR>
+  <TD>B</TD>
+  <TD><TEXTAREA id="chB.MML" rows="3" cols="50"/></TEXTAREA></TD>
+  <TD>
+    <SELECT id="chB.WF" onChange="onWaveformChanged('chB.WF', 1)">
+      <OPTION value="sine">Sine</OPTION>
+      <OPTION value="square"/>Square</OPTION>
+      <OPTION value="sawtooth">Sawtooth</OPTION>
+      <OPTION value="triangle">Triangle</OPTION>
+   </SELECT>
+  </TD>
+</TR>
+<TR>
+  <TD>C</TD>
+  <TD><TEXTAREA id="chC.MML" rows="3" cols="50"/></TEXTAREA></TD>
+  <TD>
+    <SELECT id="chC.WF" onChange="onWaveformChanged('chC.WF', 2)">
+      <OPTION value="sine">Sine</OPTION>
+      <OPTION value="square"/>Square</OPTION>
+      <OPTION value="sawtooth">Sawtooth</OPTION>
+      <OPTION value="triangle">Triangle</OPTION>
+   </SELECT>
+  </TD>
+  </TR>
 <TR>
   <TD><INPUT TYPE="submit" id="button" value="Play" onCLick="onButtonClicked()"></TD>
   <TD>
     <select id="musicSelect" onChange="onSelectionChanged()" >
       <option value="mgaTheme">Maze of Galious</option>
       <option value="furelise">Fur Elise</option>
+      <option value="hinotori">Firebird</option>
     </select>
   </TD>
 </TR>
