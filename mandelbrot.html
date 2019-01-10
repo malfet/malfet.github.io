@@ -17,7 +17,7 @@ precision highp float;
 varying vec2 pos;
 uniform vec2 center, step;
 uniform int numSteps;
-const int maxNumSteps = 65536;
+const int maxNumSteps = 16384;
 
 vec2 quickTwoSum(float a, float b) {
   float s = a + b;
@@ -116,7 +116,7 @@ precision highp float;
 varying vec2 pos;
 uniform vec2 center, step;
 uniform int numSteps;
-const int maxNumSteps = 65536;
+const int maxNumSteps = 16384;
 
 float sqrdistance(vec2 val) {
   return val.x*val.x+val.y*val.y;
