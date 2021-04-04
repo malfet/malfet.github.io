@@ -29,10 +29,9 @@ struct Object {
   // For sphere, quat.xyz is center, quat.w is radius
   // For plane, quat.xyz is normal, quat.w is D
   vec4 quat;
-  vec3 color;
+  vec4 color_type; // color_type.w == 0 <- sphere, 1.0 <- plane, 2.0 <- checkered sphere, 3.0 <- checkered plane
   // Light coefficients
   vec4 material; //.x is ambient, .y is diffuse, .z is specular and w is reflect
-  int type;// 0 <- sphere, 1 <- plane, 2 <- checkered sphere, 3 <- checkered plane
 };
 struct Camera {
   vec3 location;
@@ -46,14 +45,14 @@ struct Ray {
 float sqr(float x) { return x*x; }
 
 bool ObjectIntersect(in Object obj, in Ray ray, out float distance) {
-  if (obj.type == 1 || obj.type == 3) {
+  if (obj.color_type.w == 1.0 || obj.color_type.w == 3.0) {
     float cf = dot(obj.quat.xyz, ray.dir);
     if (abs(cf) < THRESHOLD)
       return false;
     distance = -( dot(obj.quat.xyz, ray.origin ) + obj.quat.w ) / cf;
     return distance >= THRESHOLD;
   }
-  if (obj.type == 0 || obj.type == 2) {
+  if (obj.color_type.w == 0.0 || obj.color_type.w == 2.0) {
     // Intersection of ray with sphere is a quadratic equation
     // len(ray.origin + distance*ray.direction - sphere.location) = sphere.radius
     // which is identical to
@@ -118,27 +117,27 @@ int Scene_Intersect(in Ray ray, out SurfaceProps props) {
   for(int idx = 0; idx < numObjects; ++idx) {
     if (idx != bestIdx) continue;
 
-    if (objects[idx].type == 0 || objects[idx].type == 2) {
+    if (objects[idx].color_type.w == 0.0 || objects[idx].color_type.w == 2.0) {
       props.norm = normalize(props.point - objects[idx].quat.xyz);
     } else {
       props.norm  = objects[idx].quat.xyz;
     }
 
-    props.color = objects[idx].color;
+    props.color = objects[idx].color_type.xyz;
     props.ambient = objects[idx].material.x;
     props.diffuse = objects[idx].material.y;
     props.specular = objects[idx].material.z;
     props.reflect = objects[idx].material.w;
 
     // Checked sphere pattern
-    if (objects[idx].type == 2) {
+    if (objects[idx].color_type.w == 2.0) {
       if (mod(floor(atan(props.norm.x/props.norm.z)*4.0),2.0) == 0.0
       ^^ mod(floor(acos(props.norm.y)*4.0),2.0) == 0.0) {
         props.color = vec3(1.0)-props.color;
       }
     }
     // Checked plane pattern
-    if (objects[idx].type == 3) {
+    if (objects[idx].color_type.w == 3.0) {
       vec3 px = props.norm.z == 0.0 ? vec3(-props.norm.y, props.norm.x, 0.0) : normalize(cross(props.norm, vec3(1.0,0,0)));
       vec3 py = cross(px,props.norm);
       vec3 origin =  -objects[idx].quat.w*objects[idx].quat.xyz;
@@ -383,9 +382,8 @@ class RayTracerScene {
     this.setCamera(0, 2.5, -10);
 
     //plane
-    ctx.setUniformi('objects[0].type', 3);
     ctx.setUniformf('objects[0].quat', 0, 1, 0, 0);
-    this.setColor(0, 0, 0, 1);
+    this.setColor(0, 0, 0, 1, 3);
     this.setMaterialProps(0, .1, .5, .4, .4);
 
     // Juggler spheres from http://www.etwright.org/cghist/rt2.js
@@ -467,9 +465,8 @@ class RayTracerScene {
       let pos = juggler_spheres[i]['pos'];
       let radius = juggler_spheres[i]['radius'];
       let matType = juggler_spheres[i]['type'];
-      ctx.setUniformi('objects[' +(i+1) + '].type', 0);
       ctx.setUniformf('objects[' +(i+1) + '].quat', pos[1], pos[2], pos[0], radius);
-      this.setColor(i + 1, color[0], color[1], color[2]);
+      this.setColor(i + 1, color[0], color[1], color[2], 0.0);
       if (matType == 1) {
         this.setMaterialProps(i + 1, .4, .6, .4, .0);
       } else {
@@ -490,8 +487,8 @@ class RayTracerScene {
     this.ctx.draw2DArray(this.ctx.PRIMITIVES.TRIANGLE_STRIP, 'coord', [x0, y0, x1, y0, x0, y1, x1, y1]);
   }
 
-  setColor(i,r,g,b) {
-    this.ctx.setUniformf('objects['+i+'].color',r,g,b);
+  setColor(i,r,g,b,w=0.0) {
+    this.ctx.setUniformf('objects['+i+'].color_type',r,g,b,w);
   }
 
   setMaterialProps(i, a=0, d=0, s=0, r=0) {
