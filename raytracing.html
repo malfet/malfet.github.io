@@ -446,12 +446,57 @@ class RayTracerScene {
 
 }
 
+
+var orientationEventReceived = false;
+
+function registerMotionEventListener() {
+  var compOrientation = {alpha: 0, beta: 0, gamma: 0};
+  window.addEventListener('devicemotion', function(event) {
+    orientationEventReceived = true;
+    compOrientation.alpha += event.rotationRate.alpha*event.interval;
+    compOrientation.beta += event.rotationRate.beta*event.interval;
+    compOrientation.gamma += event.rotationRate.gamma*event.interval;
+
+    const alpha = Math.PI* compOrientation.alpha / 180;
+    const beta = Math.PI* compOrientation.beta / 180;
+    const gamma = Math.PI* compOrientation.gamma / 180;
+    if (window.orientation == 0.0) {
+      scene.setCameraRotation(alpha, beta, gamma);
+    } else if (window.orientation == 90.0) {
+        scene.setCameraRotation(beta, alpha, alpha);
+    } else if (window.orientation == -90.0) {
+        scene.setCameraRotation(-beta, -alpha, alpha);
+    } else {
+      scene.setCameraRotation(0, 0, 0);
+    }
+    scene.render();
+  });
+}
+
+function requestPermissions() {
+  if (typeof DeviceMotionEvent === 'undefined') {
+    return;
+  }
+  if (typeof DeviceMotionEvent.requestPermission !== 'function') {
+    return;
+  }
+  DeviceMotionEvent.requestPermission(function(state) {
+    if (state == 'granted') {
+      registerMotionEventListener();
+    }
+  }).catch(console.error);
+}
+
+function displayClickToEnable() {
+  document.getElementById('click-to-enable').style.visibility='visible';
+}
+
 function configureTracer() {
   const canvas = document.getElementById('canvas');
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
   try {
-    var scene = new RayTracerScene(canvas);
+    scene = new RayTracerScene(canvas);
     scene.render();
     canvas.addEventListener('mousemove', function(event) {
       var xn = scene.aspect*(event.x/canvas.clientWidth - .5);
@@ -461,26 +506,13 @@ function configureTracer() {
 
       scene.render();
     });
-    var compOrientation = {alpha: 0, beta: 0, gamma: 0};
-    window.addEventListener('devicemotion', function(event) {
-      compOrientation.alpha += event.rotationRate.alpha*event.interval;
-      compOrientation.beta += event.rotationRate.beta*event.interval;
-      compOrientation.gamma += event.rotationRate.gamma*event.interval;
-
-      const alpha = Math.PI* compOrientation.alpha / 180;
-      const beta = Math.PI* compOrientation.beta / 180;
-      const gamma = Math.PI* compOrientation.gamma / 180;
-      if (window.orientation == 0.0) {
-        scene.setCameraRotation(alpha, beta, gamma);
-      } else if (window.orientation == 90.0) {
-          scene.setCameraRotation(beta, alpha, alpha);
-      } else if (window.orientation == -90.0) {
-          scene.setCameraRotation(-beta, -alpha, alpha);
-      } else {
-        scene.setCameraRotation(0, 0, 0);
+    registerMotionEventListener();
+    setTimeout(function() {
+      if (orientationEventReceived) {
+        return;
       }
-      scene.render();
-    });
+      displayClickToEnable();
+    }, 1500);
   } catch (e) {
     alert('Inialization failed: ' + e);
     return;
@@ -491,7 +523,11 @@ function configureTracer() {
 
 </script>
 <body onLoad="configureTracer();">
-  <H1>RayTracer as fragment shader</H1>
+<DIV>
+  <H1 style="display:inline">RayTracer as fragment shader</H1>
+  <DIV style="display:inline;visibility:hidden" id="click-to-enable">
+   <INPUT TYPE="submit" onClick="requestPermissions();" value="Click here to enable orientation events" />
+  </DIV>
   <canvas id="canvas" width="1024px" height="1024px"></canvas>
 </body>
 </html>
