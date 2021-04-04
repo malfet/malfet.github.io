@@ -10,8 +10,10 @@ table { font-size: 100%; }
 <script type="text/javascript">
 
 var compOrientation = {alpha: 0, beta: 0, gamma: 0};
-function onLoad() {
+var orientationEventReceived = false;
+function registerListeners() {
   window.addEventListener('deviceorientation', function(event) {
+    orientationEventReceived = true;
     document.getElementById('alpha').value = Math.round(event.alpha);
     document.getElementById('beta').value = Math.round(event.beta);
     document.getElementById('gamma').value = Math.round(event.gamma);
@@ -37,9 +39,40 @@ function onLoad() {
 
   });
 }
+
+function requestPermissions() {
+  if (typeof DeviceMotionEvent === 'undefined') {
+    return;
+  }
+  if (typeof DeviceMotionEvent.requestPermission !== 'function') {
+    return;
+  }
+  DeviceMotionEvent.requestPermission(function(state) {
+    if (state == 'granted') {
+      registerListeners();
+    }
+  }).catch(console.error);
+}
+function displayClickToEnable() {
+  document.getElementById('click-to-enable').style.visibility='visible';
+}
+function onLoad() {
+  registerListeners();
+  setTimeout(function() {
+    if (orientationEventReceived) {
+      return;
+    }
+    displayClickToEnable();
+  }, 1500);
+}
 </script>
 <body onload='onLoad();'>
-<H3>Orientation</H3>
+<DIV>
+  <H3 style="display:inline">Orientation</H3>
+  <DIV style="display:inline;visibility:hidden" id="click-to-enable">
+   <INPUT TYPE="submit" onClick="requestPermissions();" value="Click here to enable orientation events" />
+  </DIV>
+</DIV>
 <TABLE>
 <TR><TH>Angle</TH><TD>Event</TD><TD>Computed</TD></TR>
 <TR><TD>Alpha</TD><TD><INPUT id="alpha"/>&nbsp;deg</TD><TD><INPUT id="calpha"/>&nbsp;deg</TD></TR>
@@ -56,6 +89,5 @@ function onLoad() {
 <TR><TD>Acc.Y</TD><TD><INPUT id="ay"/>&nbsp;cm/sec2</TD></TR>
 <TR><TD>Acc.Z</TD><TD><INPUT id="az"/>&nbsp;cm/sec2</TD></TR>
 </TABLE>
-
 </BODY>
 </HTML>
