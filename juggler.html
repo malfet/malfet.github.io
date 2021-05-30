@@ -12,7 +12,7 @@ void main(void) {
 }
 </script>
 
-<script type="x-shader/x-fragment" id="rayTrackingFS">
+<script type="x-shader/x-fragment" id="rayTracingFS">
 precision highp float;
 varying vec2 pos;
 
@@ -373,7 +373,7 @@ class GLContext {
 class RayTracerScene {
   constructor(canvas) {
     const ctx = new GLContext(canvas);
-    const prog = ctx.linkProgram(['passThruVS', 'rayTrackingFS'].map(_ => ctx.compileShaderById(_)));
+    const prog = ctx.linkProgram(['passThruVS', 'rayTracingFS'].map(_ => ctx.compileShaderById(_)));
     ctx.getGLContext().useProgram(prog);
 
     this.ctx = ctx;
