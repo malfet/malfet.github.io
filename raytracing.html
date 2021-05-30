@@ -75,8 +75,6 @@ bool ObjectIntersect(in Object obj, in Ray ray, out float distance) {
 }
 
 // Scene defenition
-vec3 White  = vec3(1.0, 1.0, 1.0);
-
 const int numLights = 1;
 const int numObjects = 5;
 uniform Object objects[numObjects];
@@ -159,8 +157,7 @@ void main(void) {
   for(int depth = 0; depth < 5; ++depth) {
     int objIdx = Scene_Intersect(ray, props);
     if (objIdx < 0) {
-      if (depth == 0)
-        color = vec3(0.196, 0.6, 0.8);
+      color += weight * vec3(0.196, 0.6, 0.8);
       break;
     }
     color += weight * props.ambient * props.color;
