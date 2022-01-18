@@ -28,7 +28,7 @@ vec2 juliaStep(vec2 z) {
 }
 
 vec4 assignColor(vec2 z, int step, int numSteps) {
-  return vec4(abs(.5*z.x), float(step)/float(numSteps), abs(.5*z.y), 1);
+  return vec4(log(sqrdistance(z))/3.0, float(step)/float(numSteps), abs(atan(z.y, z.x))/3.0, 1);
 }
 
 void main(void) {
