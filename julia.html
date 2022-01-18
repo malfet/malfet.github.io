@@ -27,13 +27,17 @@ vec2 juliaStep(vec2 z) {
   return vec2(z.x*z.x-z.y*z.y+c.x, 2.0*z.x*z.y + c.y);
 }
 
+vec4 assignColor(vec2 z, int step, int numSteps) {
+  return vec4(abs(.5*z.x), float(step)/float(numSteps), abs(.5*z.y), 1);
+}
+
 void main(void) {
   vec2 z = vec2(center.x + step.x*pos.x, center.y - step.y*pos.y);
 
   for(int cnt = 0; cnt < maxNumSteps; cnt++) {
     if (cnt == numSteps) break;
     if (sqrdistance(z) >= 4.0) {
-      gl_FragColor = vec4(abs(.5*z.x), float(cnt)/float(numSteps), abs(.5*z.y), 1);
+      gl_FragColor = assignColor(z, cnt, numSteps);
       return;
     }
     z = juliaStep(z);
