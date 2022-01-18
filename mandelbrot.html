@@ -17,6 +17,7 @@ precision highp float;
 varying vec2 pos;
 uniform vec2 center, step;
 uniform int numSteps;
+uniform int usePalette;
 const int maxNumSteps = 16384;
 
 vec2 quickTwoSum(float a, float b) {
@@ -116,6 +117,7 @@ precision highp float;
 varying vec2 pos;
 uniform vec2 center, step;
 uniform int numSteps;
+uniform int usePalette;
 const int maxNumSteps = 16384;
 
 float sqrdistance(vec2 val) {
@@ -126,6 +128,38 @@ vec2 mandelbrotStep(vec2 z, vec2 c) {
   return vec2(z.x*z.x-z.y*z.y+c.x, 2.0*z.x*z.y + c.y);
 }
 
+int mod(int a, int b) {
+  float af = float(a);
+  float bf = float(b);
+  return int(floor(af-floor(af/bf)*bf));
+}
+
+vec4 getPaletteColor(int steps) {
+ int idx = mod(steps, 7);
+ if (idx == 0)
+   return vec4(0, 0, 1, 1);
+ if (idx == 1)
+   return vec4(0, 1, 0, 1);
+ if (idx == 2)
+   return vec4(0, 1, 1, 1);
+ if (idx == 3)
+   return vec4(1, 0, 0, 1);
+ if (idx == 4)
+   return vec4(1, 0, 1, 1);
+ if (idx == 5)
+   return vec4(1, 1, 0, 1);
+ return vec4(1, 1, 1, 1);
+}
+
+vec4 assignColor(vec2 z, int steps, int numSteps) {
+ if (usePalette == 0)
+   return vec4(abs(.5*z.x), float(step)/float(numSteps), abs(.5*z.y), 1);
+ float nu = log(log(sqrdistance(z))/2.0)/log(2.0);
+ vec4 a = getPaletteColor(steps);
+ vec4 b = getPaletteColor(steps+1);
+ return a * nu + b * (1.0 - nu);
+}
+
 void main(void) {
   vec2 z = vec2(0, 0);
   vec2 c = vec2(center.x + step.x*pos.x, center.y - step.y*pos.y);
@@ -133,7 +167,7 @@ void main(void) {
   for(int cnt = 0; cnt < maxNumSteps; cnt++) {
     if (cnt == numSteps) break;
     if (sqrdistance(z) >= 4.0) {
-      gl_FragColor = vec4(abs(.5*z.x), float(cnt)/float(numSteps), abs(.5*z.y), 1);
+      gl_FragColor = assignColor(z, cnt, numSteps);
       return;
     }
     z = mandelbrotStep(z, c);
@@ -156,7 +190,7 @@ class GLContext {
   constructor(canvas) {
     if (canvas == null)
       throw 'Can not find canvas';
-    const ctx = canvas.getContext('webgl');
+    const ctx = canvas.getContext('webgl2');
     if (ctx == null)
       throw 'Can not get WebGL context...';
     ctx.viewport(0, 0, canvas.clientWidth, canvas.clientHeight);
@@ -310,7 +344,7 @@ class ZoomRenderer {
     this._halfCanvasDim = new Point(canvas.clientWidth, canvas.clientHeight).mul(.5);
     this._scale = 4.0/Math.min(canvas.clientWidth, canvas.clientHeight);
     this._center = new Point(0.0, 0.0);
-    const stepsMatch = window.location.search.match(/numSteps=([0-9]+)/);
+    const stepsMatch = window.location.search.match(/[&?]numSteps=(\d+)/);
     this._numSteps = stepsMatch ? Number(stepsMatch[1]) : 256;
     if (window.location.search.indexOf('overfloat') >= 0) {
       this._center = new Point(0.2807024158978315, -0.011177972555812295);
@@ -318,6 +352,7 @@ class ZoomRenderer {
     }
     this._forceDF = window.location.search.indexOf('forceDF') >= 0;
     this._noDF = window.location.search.indexOf('noDF') >= 0;
+    this._usePalette = window.location.search.indexOf('usePalette') >= 0;
     this._configureMouseEventHandlers(canvas);
     this._configureTouchEventHandlers(canvas);
   }
@@ -477,6 +512,7 @@ class ZoomRenderer {
     ctx.setUniform2f('center', this._center.x, this._center.y);
     ctx.setUniform2f('step', step.x, step.y);
     ctx.setUniform1i('numSteps', this._numSteps);
+    ctx.setUniform1i('usePalette', this._usePalette ? 1 : 0);
     this.drawQuad(-1,-1, 1, 1);
   }
 }
