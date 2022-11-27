@@ -39,7 +39,7 @@ vec2 twoSum(float a, float b) {
   float s = (a + b)*ONE;
   float av = s - b;
   float bv = s - a;
-  float e = (a - av) + (b - bv);
+  float e = (a - av*ONE) + (b - bv*ONE);
   return vec2(s, e);
 }
 
