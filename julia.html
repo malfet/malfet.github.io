@@ -17,6 +17,7 @@ precision highp float;
 varying vec2 pos;
 uniform vec2 center, step, c;
 uniform int numSteps;
+uniform int numDecomps;
 const int maxNumSteps = 16384;
 
 float sqrdistance(vec2 val) {
@@ -27,7 +28,35 @@ vec2 juliaStep(vec2 z) {
   return vec2(z.x*z.x-z.y*z.y+c.x, 2.0*z.x*z.y + c.y);
 }
 
+int mod(int a, int b) {
+  float af = float(a);
+  float bf = float(b);
+  return int(floor(af-floor(af/bf)*bf));
+}
+
+vec4 getPaletteColor(int steps) {
+ int idx = mod(steps, 7);
+ if (idx == 0)
+   return vec4(0, 0, 1, 1);
+ if (idx == 1)
+   return vec4(0, 1, 0, 1);
+ if (idx == 2)
+   return vec4(0, 1, 1, 1);
+ if (idx == 3)
+   return vec4(1, 0, 0, 1);
+ if (idx == 4)
+   return vec4(1, 0, 1, 1);
+ if (idx == 5)
+   return vec4(1, 1, 0, 1);
+ return vec4(1, 1, 1, 1);
+}
+
 vec4 assignColor(vec2 z, int step, int numSteps) {
+  if (numDecomps > 1) {
+     int idx = int(floor((3.1415926 + atan(z.y, z.x)) * float(numDecomps) / 6.2833852));
+     return getPaletteColor(idx);
+  }
+
   return vec4(log(sqrdistance(z))/3.0, float(step)/float(numSteps), abs(atan(z.y, z.x))/3.0, 1);
 }
 
@@ -212,6 +241,8 @@ class ZoomRenderer {
     this._center = new Point(0.0, 0.0);
     const stepsMatch = window.location.search.match(/[?&]numSteps=(\d+)/);
     this._numSteps = stepsMatch ? Number(stepsMatch[1]) : 256;
+    const decompMatch = window.location.search.match(/[?&]numDecomp=(\d+)/);
+    this._numDecomps = decompMatch ? Number(decompMatch[1]) : 0;
     const cMatch = window.location.search.match(/[?&]c=(-?\d+\.\d+)([+-]\d+\.\d+)i/);
     if (cMatch) {
       this._c = new Point(Number(cMatch[1]), Number(cMatch[2]));
@@ -350,6 +381,7 @@ class ZoomRenderer {
     ctx.setUniform2f('step', step.x, step.y);
     ctx.setUniform2f('c', this._c.x, this._c.y);
     ctx.setUniform1i('numSteps', this._numSteps);
+    ctx.setUniform1i('numDecomps', this._numDecomps);
     this.drawQuad(-1,-1, 1, 1);
   }
 }
