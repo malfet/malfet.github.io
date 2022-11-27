@@ -18,16 +18,17 @@ varying vec2 pos;
 uniform vec2 center, step;
 uniform int numSteps;
 uniform int usePalette;
+uniform float ONE;
 const int maxNumSteps = 16384;
 
 vec2 quickTwoSum(float a, float b) {
-  float s = a + b;
+  float s = (a + b) * ONE;
   float e = b - (s - a);
   return vec2(s, e);
 }
 
 vec4 twoSumComp(vec2 a_ri, vec2 b_ri) {
-  vec2 s = a_ri + b_ri;
+  vec2 s = (a_ri + b_ri) * ONE;
   vec2 v = s - a_ri;
   vec2 e = (a_ri - (s - v)) + (b_ri - v);
   return vec4(s.x, e.x, s.y, e.y);
@@ -93,6 +94,38 @@ float sqrdistance(vec4 val) {
   return val.x*val.x + val.z*val.z;
 }
 
+int mod(int a, int b) {
+  float af = float(a);
+  float bf = float(b);
+  return int(floor(af-floor(af/bf)*bf));
+}
+
+vec4 getPaletteColor(int steps) {
+ int idx = mod(steps, 7);
+ if (idx == 0)
+   return vec4(0, 0, 1, 1);
+ if (idx == 1)
+   return vec4(0, 1, 0, 1);
+ if (idx == 2)
+   return vec4(0, 1, 1, 1);
+ if (idx == 3)
+   return vec4(1, 0, 0, 1);
+ if (idx == 4)
+   return vec4(1, 0, 1, 1);
+ if (idx == 5)
+   return vec4(1, 1, 0, 1);
+ return vec4(1, 1, 1, 1);
+}
+
+vec4 assignColor(vec4 z, int steps, int numSteps) {
+ if (usePalette == 0)
+   return vec4(abs(.5*z.x), float(step)/float(numSteps), abs(.5*z.z), 1);
+ float nu = log(log(sqrdistance(z))/2.0)/log(2.0);
+ vec4 a = getPaletteColor(steps);
+ vec4 b = getPaletteColor(steps+1);
+ return a * nu + b * (1.0 - nu);
+}
+
 void main(void) {
   vec4 z = vec4(0);
   vec4 c = vec4(
@@ -102,7 +135,7 @@ void main(void) {
   for(int cnt = 0; cnt < maxNumSteps; cnt++) {
     if (cnt == numSteps) break;
     if (sqrdistance(z) >= 4.0) {
-      gl_FragColor = vec4(abs(.5*z.x), float(cnt)/float(numSteps), abs(.5*z.z), 1);
+      gl_FragColor = assignColor(z, cnt, numSteps);
       return;
     }
     z = mandelbrotStep(z, c);
@@ -259,6 +292,13 @@ class GLContext {
     const prog = glCtx.getParameter(glCtx.CURRENT_PROGRAM);
     const idx = glCtx.getUniformLocation(prog, name);
     glCtx.uniform1i(idx, a);
+  }
+
+  setUniform1f(name, a) {
+    const glCtx = this.getGLContext();
+    const prog = glCtx.getParameter(glCtx.CURRENT_PROGRAM);
+    const idx = glCtx.getUniformLocation(prog, name);
+    glCtx.uniform1f(idx, a);
   }
 
   setUniform2f(name, a, b) {
@@ -513,6 +553,7 @@ class ZoomRenderer {
     ctx.setUniform2f('step', step.x, step.y);
     ctx.setUniform1i('numSteps', this._numSteps);
     ctx.setUniform1i('usePalette', this._usePalette ? 1 : 0);
+    ctx.setUniform1f('ONE', 1.0);
     this.drawQuad(-1,-1, 1, 1);
   }
 }
