@@ -33,13 +33,13 @@ void main(void) {
 <script type="x-shader/x-fragment" id="renderFracONE">
 precision highp float;
 varying vec2 pos;
-uniform float ONE;
+uniform vec2 ONE;
 
 vec2 twoSum(float a, float b) {
-  float s = (a + b)*ONE;
-  float av = s - b;
-  float bv = s - a;
-  float e = (a - av*ONE) + (b - bv*ONE);
+  float s = a + b;
+  float av = s * ONE.x - b * ONE.y;
+  float bv = s * ONE.y - a * ONE.x;
+  float e = (a - av) + (b - bv);
   return vec2(s, e);
 }
 
@@ -119,11 +119,11 @@ class GLContext {
     return rc;
   }
 
-  setUniform1f(name, a) {
+  setUniform2f(name, a, b) {
     const glCtx = this.getGLContext();
     const prog = glCtx.getParameter(glCtx.CURRENT_PROGRAM);
     const idx = glCtx.getUniformLocation(prog, name);
-    glCtx.uniform1f(idx, a);
+    glCtx.uniform2f(idx, a, b);
   }
 
   draw2DArray(type, name, arr) {
@@ -159,7 +159,7 @@ function visualizeRoundoffs(canvasName, shaderName, elementName) {
     const prog = ctx.linkProgram(['passThruVS', shaderName].map(_ => ctx.compileShaderById(_)));
     const gl = ctx.getGLContext();
     gl.useProgram(prog);
-    ctx.setUniform1f('ONE', 1.0);
+    ctx.setUniform2f('ONE', 1.0, 1.0);
     ctx.draw2DArray(gl.TRIANGLE_STRIP, 'coord', [-1, -1, 1, -1, -1, 1, 1, 1]);
     const pixelCount = 100;
     const buf = new Uint8Array(4 * pixelCount);
