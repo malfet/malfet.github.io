@@ -1,0 +1,46 @@
+<html>
+<head>
+    <title>Compute PI digits using BigInt</title>
+</head>
+<script>
+function computePI() {
+    let pi = "&#960;=3.";
+    document.write(pi);
+    // Based on "Unbounded Spigot Algorithms for the Digits of Pi" by Jeremy Gibbons
+    // https://www.cs.ox.ac.uk/people/jeremy.gibbons/publications/spigot.pdf
+    const one = BigInt(1);
+    const two = BigInt(2);
+    const three = BigInt(3);
+    const four = BigInt(4);
+    const seven = BigInt(7);
+    const ten = BigInt(10);
+    let cnt = 0;
+    let q = BigInt(10);
+    let r = BigInt(-30);
+    let t = BigInt(3);
+    let k = BigInt(2);
+    let n = BigInt(0);
+    let l = BigInt(5);
+    while (cnt < 1000) {
+        if (four * q + r -t < n * t) {
+            pi += n+"&shy;";
+            document.body.innerHTML = pi;
+            cnt += 1;
+            q *= ten;
+            let r_ = ten * (r - n * t);
+            n =  (three * q + ten * r) / t - ten * n;
+            r = r_;
+            continue;
+        }
+        t *= l;
+        n = (q * (seven * k + two) + r * l) / t;
+        r = (two * q + r) * l;
+        q *= k;
+        k += one;
+        l += two;
+    }
+}
+</script>
+<BODY onload="computePI()">
+          &#960;=3.14... (to be overwritten by the script)</BODY>
+</html>
