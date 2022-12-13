@@ -3,41 +3,59 @@
     <title>Compute PI digits using BigInt</title>
 </head>
 <script>
+const one = BigInt(1);
+const two = BigInt(2);
+const three = BigInt(3);
+const four = BigInt(4);
+const seven = BigInt(7);
+const ten = BigInt(10);
+
+// Based on "Unbounded Spigot Algorithms for the Digits of Pi" by Jeremy Gibbons
+// https://www.cs.ox.ac.uk/people/jeremy.gibbons/publications/spigot.pdf
+// Namely a JS adaptation of the following Haskell code:
+// > pi = g(1,0,1,1,3,3) where
+// >    g(q,r,t,k,n,l) = if 4*q+r-t<n*t
+// >    then n : g(10*q,10*(r-n*t),t,k,div(10*(3*q+r))t-10*n,l)
+// >    else g(q*k,(2*q+r)*l,t*l,k+1,div(q*(7*k+2)+r*l)(t*l),l+2)
+
+class ComputePI {
+    constructor() {
+        this.q = BigInt(10);
+        this.r = BigInt(-30);
+        this.t = BigInt(3);
+        this.k = BigInt(2);
+        this.n = BigInt(0);
+        this.l = BigInt(5);
+        this.digitsYielded = 0;
+    }
+    yieldDigit() {
+        while (four * this.q + this.r - this.t >= this.n * this.t) {
+            this.t *= this.l;
+            this.n = (this.q * (seven * this.k + two) + this.r * this.l) / this.t;
+            this.r = (two * this.q + this.r) * this.l;
+            this.q *= this.k;
+            this.k += one;
+            this.l += two;
+        }
+        const n = this.n;
+        this.digitsYielded += 1;
+        this.q *= ten;
+        const r = ten * (this.r - n * this.t);
+        this.n =  (three * this.q + ten * this.r) / this.t - ten * n;
+        this.r = r;
+        return n;
+    }
+}
+
 function computePI() {
+    let spigot = new ComputePI();
     let pi = "&#960;=3.";
     document.write(pi);
-    // Based on "Unbounded Spigot Algorithms for the Digits of Pi" by Jeremy Gibbons
-    // https://www.cs.ox.ac.uk/people/jeremy.gibbons/publications/spigot.pdf
-    const one = BigInt(1);
-    const two = BigInt(2);
-    const three = BigInt(3);
-    const four = BigInt(4);
-    const seven = BigInt(7);
-    const ten = BigInt(10);
     let cnt = 0;
-    let q = BigInt(10);
-    let r = BigInt(-30);
-    let t = BigInt(3);
-    let k = BigInt(2);
-    let n = BigInt(0);
-    let l = BigInt(5);
     while (cnt < 1000) {
-        if (four * q + r -t < n * t) {
-            pi += n+"&shy;";
-            document.body.innerHTML = pi;
-            cnt += 1;
-            q *= ten;
-            let r_ = ten * (r - n * t);
-            n =  (three * q + ten * r) / t - ten * n;
-            r = r_;
-            continue;
-        }
-        t *= l;
-        n = (q * (seven * k + two) + r * l) / t;
-        r = (two * q + r) * l;
-        q *= k;
-        k += one;
-        l += two;
+        pi += spigot.yieldDigit() + "&shy;";
+        document.body.innerHTML = pi;
+        cnt += 1;
     }
 }
 </script>
