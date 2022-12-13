@@ -47,18 +47,27 @@ class ComputePI {
     }
 }
 
-function computePI() {
+function configureSpigot() {
     let spigot = new ComputePI();
+    const maxDigits = 1e4;
+    const maxDuration = 5;
     let pi = "&#960;=3.";
-    document.write(pi);
-    let cnt = 0;
-    while (cnt < 1000) {
-        pi += spigot.yieldDigit() + "&shy;";
+    const computeDigits = function() {
+        const start = performance.now();
+        while (spigot.digitsYielded < maxDigits && performance.now() - start < maxDuration) {
+            pi += spigot.yieldDigit() + "&shy;";
+        }
+        if (spigot.digitsYielded >= maxDigits) {
+            pi += "...";
+        }
         document.body.innerHTML = pi;
-        cnt += 1;
-    }
+        if (spigot.digitsYielded < maxDigits) {
+            window.requestAnimationFrame(computeDigits);
+        }
+    };
+    computeDigits();
 }
 </script>
-<BODY onload="computePI()">
+<BODY onload="configureSpigot()">
           &#960;=3.14... (to be overwritten by the script)</BODY>
 </html>
