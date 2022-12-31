@@ -16,7 +16,7 @@ void main(void) {
 precision highp float;
 varying vec2 pos;
 
-const float THRESHOLD = 1e-1;
+const float THRESHOLD = 1e-4;
 
 
 struct PointLight {
@@ -34,6 +34,7 @@ struct Object {
   float ambient, diffuse, specular, reflect;
   int type;// 0 <- sphere, 1 <- plane, 2 <- checkered sphere, 3 <- checkered plane
 };
+
 struct Camera {
   vec3 location;
   vec3 vx,vy,vz;
@@ -495,12 +496,18 @@ function configureTracer() {
   try {
     scene = new RayTracerScene(canvas);
     scene.render();
+    var cameraDistance = -1.0;
+    var xn = 0.0;
+    var yn = 0.0;
     canvas.addEventListener('mousemove', function(event) {
-      var xn = scene.aspect*(event.x/canvas.clientWidth - .5);
-      var yn = (event.y/canvas.clientHeight - .5);
-      scene.setCamera(xn, yn, -1);
-      //scene.setCameraRotation(xn, yn,0);
-
+      xn = scene.aspect*(event.x/canvas.clientWidth - .5);
+      yn = (event.y/canvas.clientHeight - .5);
+      scene.setCamera(xn, yn, cameraDistance);
+      scene.render();
+    });
+    canvas.addEventListener('wheel', function(event) {
+      cameraDistance += 1e-3 * event.deltaY;
+      scene.setCamera(xn, yn, cameraDistance);
       scene.render();
     });
     registerMotionEventListener();
