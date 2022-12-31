@@ -37,7 +37,7 @@ struct Object {
 
 struct Camera {
   vec3 location;
-  vec3 vx,vy,vz;
+  mat3 rotation;
 };
 
 struct Ray {
@@ -151,7 +151,7 @@ int Scene_Intersect(in Ray ray, out SurfaceProps props) {
 }
 
 void main(void) {
-  Ray ray = Ray(camera.location, normalize(camera.vz+.6*pos.x*camera.vx + .6*pos.y*camera.vy));
+  Ray ray = Ray(camera.location, normalize(camera.rotation * vec3(.6 * pos.x, .6 * pos.y, 1.0)));
   vec3 color = vec3(0.0);
   float weight = 1.0;
   SurfaceProps props;
@@ -334,6 +334,14 @@ class GLContext {
     else
       throw "Unsupported number of uniform arguments";
   }
+  setMatrix3fv(name, v) {
+    const glCtx = this.getGLContext();
+    const prog = glCtx.getParameter(glCtx.CURRENT_PROGRAM);
+    const idx = glCtx.getUniformLocation(prog, name);
+    if (v.length != 9)
+      throw "Unexpected number of 3x3 matrix arguments";
+    glCtx.uniformMatrix3fv(idx, false, v);
+  }
 
   setUniformi(name) {
     const glCtx = this.getGLContext();
@@ -430,16 +438,15 @@ class RayTracerScene {
 
   setCamera(x=0, y=0, z=-1) {
     this.ctx.setUniformf('camera.location', x, y, z);
-    this.ctx.setUniformf('camera.vx', this.aspect, 0, 0);
-    this.ctx.setUniformf('camera.vy', 0, 1, 0);
-    this.ctx.setUniformf('camera.vz', 0, 0, 1);
+    this.ctx.setMatrix3fv('camera.rotation', [this.aspect, 0, 0, 0, 1, 0, 0, 0, 1]);
   }
 
   setCameraRotation(longitude, latitude, spin) {
     var mat = mulMatMat(rotateY(-latitude), rotateX(longitude));
-    this.ctx.setUniformf('camera.vx', this.aspect*mat[0], this.aspect*mat[3], this.aspect*mat[6]);
-    this.ctx.setUniformf('camera.vy', mat[1], mat[4], mat[7]);
-    this.ctx.setUniformf('camera.vz', mat[2], mat[5], mat[8]);
+    for(var i = 0; i < 3; i++) {
+      mat[3*i] *= this.aspect;
+    }
+    this.ctx.setMatrix3fv('camera.rotation', mat);
   }
 
 }
