@@ -18,7 +18,6 @@ varying vec2 pos;
 
 const float THRESHOLD = 1e-4;
 
-
 struct PointLight {
   vec3 location;
   vec3 color;
@@ -32,7 +31,7 @@ struct Object {
   vec3 color;
   // Light coefficients
   float ambient, diffuse, specular, reflect;
-  int type;// 0 <- sphere, 1 <- plane, 2 <- checkered sphere, 3 <- checkered plane
+  int type; // 1 <- sphere, 2 <- plane, 3 <- checkered sphere, 4 <- checkered plane
 };
 
 struct Camera {
@@ -44,17 +43,30 @@ struct Ray {
   vec3 origin, dir;
 };
 
-float sqr(float x) { return x*x; }
+struct SurfaceProps {
+  // Light coefficients
+  float ambient, diffuse, specular, reflect;
+  vec3 point;
+  vec3 color;
+  vec3 norm;
+};
 
-bool ObjectIntersect(in Object obj, in Ray ray, out float distance) {
-  if (obj.type == 1 || obj.type == 3) {
+float sqr(float x) { return x*x; }
+float sqr(vec3 x) { return dot(x, x);}
+
+// Returns intersection point between ray and object or ray origin if there are no interesction
+vec3 ObjectIntersect(in Object obj, in Ray ray) {
+  float distance = 0.0;
+  if (obj.type == 2 || obj.type == 4) {
+    // Intersection of ray with plane is a linear equation
     float cf = dot(obj.quat.xyz, ray.dir);
-    if (abs(cf) < THRESHOLD)
-      return false;
+    // Return early if ray directions is perpendicular to plane normal
+    if (abs(cf) < THRESHOLD) {
+      return ray.origin;
+    }
     distance = -( dot(obj.quat.xyz, ray.origin ) + obj.quat.w ) / cf;
-    return distance >= THRESHOLD;
   }
-  if (obj.type == 0 || obj.type == 2) {
+  if (obj.type == 1 || obj.type == 3) {
     // Intersection of ray with sphere is a quadratic equation
     // len(ray.origin + distance*ray.direction - sphere.location) = sphere.radius
     // which is identical to
@@ -64,16 +76,57 @@ bool ObjectIntersect(in Object obj, in Ray ray, out float distance) {
     vec3 oc = obj.quat.xyz - ray.origin;
     float ocd = dot(oc, ray.dir);
     float d4 = sqr(obj.quat.w) + sqr(ocd) - dot(oc, oc);
-    if (d4 < 0.0)
-      return false;
+    if (d4 < 0.0) {
+      return ray.origin;
+    }
     d4 = sqrt(d4);
     distance = ocd - d4;
-    if (distance <= THRESHOLD)
+    if (distance < THRESHOLD) {
       distance = ocd + d4;
-    return distance >= THRESHOLD;
+    }
   }
-  return false;
+  if (distance >= THRESHOLD) {
+    return ray.origin + distance * ray.dir;
+  }
+  return ray.origin;
 }
+
+void ObjectFillProps(in Object obj, in vec3 point, out SurfaceProps props) {
+  props.point = point;
+  props.color = obj.color;
+  props.ambient = obj.ambient;
+  props.diffuse = obj.diffuse;
+  props.specular = obj.specular;
+  props.reflect = obj.reflect;
+
+  // Compute norm
+  if (obj.type == 1 || obj.type == 3) {
+    // Normal to the surface is vec from origin to point on surface
+    props.norm = normalize(props.point - obj.quat.xyz);
+  } else {
+    // Normal to plane is constant
+    props.norm  = obj.quat.xyz;
+  }
+
+  // Checked sphere pattern
+  if (obj.type == 3) {
+    if (mod(floor(atan(props.norm.x/props.norm.z)*4.0),2.0) == 0.0
+    ^^ mod(floor(acos(props.norm.y)*4.0),2.0) == 0.0) {
+      props.color = vec3(1.0)-props.color;
+    }
+  }
+  // Checked plane pattern
+  if (obj.type == 4) {
+    vec3 px = props.norm.z == 0.0 ? vec3(-props.norm.y, props.norm.x, 0.0) : normalize(cross(props.norm, vec3(1.0,0,0)));
+    vec3 py = cross(px,props.norm);
+    vec3 origin =  -obj.quat.w*obj.quat.xyz;
+    vec3 offs = props.point - origin;
+    if (mod(floor(dot(offs,px)),2.0) == 0.0 ^^ mod(floor(dot(offs,py)),2.0) == 0.0) {
+      props.color = vec3(1.0)-props.color;
+    }
+  }
+}
+
 
 // Scene defenition
 const int numLights = 1;
@@ -82,70 +135,32 @@ uniform Object objects[numObjects];
 uniform PointLight lights[numLights];
 uniform Camera camera;
 
-struct SurfaceProps {
-  // Light coefficients
-  float ambient, diffuse, specular, reflect;
-  vec3 point;
-  vec3 color;
-  vec3 norm;
-};
-
 bool Scene_Intersects(in Ray ray) {
-    for(int idx = 0; idx < numObjects; ++idx) {
-      float d;
-      if (ObjectIntersect(objects[idx], ray, d)) {
-        return true;
-      }
+  for(int idx = 0; idx < numObjects; ++idx) {
+    if (sqr(ObjectIntersect(objects[idx], ray) - ray.origin) > THRESHOLD) {
+      return true;
     }
-    return false;
+  }
+  return false;
 }
 
 int Scene_Intersect(in Ray ray, out SurfaceProps props) {
-  float bestDistance = 1e6;
+  float bestDistance2 = 1e12;
   int bestIdx = -1;
+  vec3 bestPoint;
   for(int idx = 0; idx < numObjects; ++idx) {
-    float d;
-    if (ObjectIntersect(objects[idx], ray, d)) {
-      if (d < bestDistance) {
-        bestDistance = d;
-        bestIdx = idx;
-      }
+    vec3 point  = ObjectIntersect(objects[idx], ray);
+    float d2 = sqr(point - ray.origin);
+    if (d2 >= THRESHOLD && d2 < bestDistance2) {
+      bestDistance2 = d2;
+      bestIdx = idx;
+      bestPoint = point;
     }
   }
   if (bestIdx < 0) return bestIdx;
-  props.point = ray.origin + bestDistance * ray.dir;
   for(int idx = 0; idx < numObjects; ++idx) {
     if (idx != bestIdx) continue;
-
-    if (objects[idx].type == 0 || objects[idx].type == 2) {
-      props.norm = normalize(props.point - objects[idx].quat.xyz);
-    } else {
-      props.norm  = objects[idx].quat.xyz;
-    }
-
-    props.color = objects[idx].color;
-    props.ambient = objects[idx].ambient;
-    props.diffuse = objects[idx].diffuse;
-    props.specular = objects[idx].specular;
-    props.reflect = objects[idx].reflect;
-
-    // Checked sphere pattern
-    if (objects[idx].type == 2) {
-      if (mod(floor(atan(props.norm.x/props.norm.z)*4.0),2.0) == 0.0
-      ^^ mod(floor(acos(props.norm.y)*4.0),2.0) == 0.0) {
-        props.color = vec3(1.0)-props.color;
-      }
-    }
-    // Checked plane pattern
-    if (objects[idx].type == 3) {
-      vec3 px = props.norm.z == 0.0 ? vec3(-props.norm.y, props.norm.x, 0.0) : normalize(cross(props.norm, vec3(1.0,0,0)));
-      vec3 py = cross(px,props.norm);
-      vec3 origin =  -objects[idx].quat.w*objects[idx].quat.xyz;
-      vec3 offs = props.point - origin;
-      if (mod(floor(dot(offs,px)),2.0) == 0.0 ^^ mod(floor(dot(offs,py)),2.0) == 0.0) {
-        props.color = vec3(1.0)-props.color;
-      }
-    }
+    ObjectFillProps(objects[idx], bestPoint, props);
   }
   return bestIdx;
 }
@@ -389,30 +404,32 @@ class RayTracerScene {
     this.setCamera();
 
     // Spheres
-    ctx.setUniformi('objects[0].type', 2);
+    this.setType(0, 3);
     ctx.setUniformf('objects[0].quat', 0, 1, 5, 1.5);
     this.setColor(0, 1, 1, 1);
     this.setMaterialProps(0, .1, .5, .6);
 
+    this.setType(1, 1);
     ctx.setUniformf('objects[1].quat', -3, 0, 4, 1);
     this.setColor(1, 0, 1, 0);
     this.setMaterialProps(1, .1, .5, .6, 0);
 
+    this.setType(2, 1);
     ctx.setUniformf('objects[2].quat', 2, 0, 3, 1);
     this.setColor(2, 1, 1, 0);
     this.setMaterialProps(2, .2, .5, .6, .3);
 
-    ctx.setUniformi('objects[4].type', 2);
-    ctx.setUniformf('objects[4].quat', 10, 3.5, 0, 3);
-    this.setColor(4, 1, 1, 0);
-    this.setMaterialProps(4, .2, .3, .3, .5);
+    this.setType(3, 3);
+    ctx.setUniformf('objects[3].quat', 10, 3.5, 0, 3);
+    this.setColor(3, 1, 1, 0);
+    this.setMaterialProps(3, .2, .3, .3, .5);
 
 
     //plane
-    ctx.setUniformi('objects[3].type', 1);
-    ctx.setUniformf('objects[3].quat', 0, 1, 0, 1);
-    this.setColor(3, 0, 0, 1);
-    this.setMaterialProps(3, .1, .5, .4, .4);
+    this.setType(4, 2);
+    ctx.setUniformf('objects[4].quat', 0, 1, 0, 1);
+    this.setColor(4, 0, 0, 1);
+    this.setMaterialProps(4, .1, .5, .4, .4);
 
     // Lights
     ctx.setUniformf('lights[0].location', 10, 5, -10);
@@ -425,8 +442,12 @@ class RayTracerScene {
     this.ctx.draw2DArray(this.ctx.PRIMITIVES.TRIANGLE_STRIP, 'coord', [x0, y0, x1, y0, x0, y1, x1, y1]);
   }
 
-  setColor(i,r,g,b) {
-    this.ctx.setUniformf('objects['+i+'].color',r,g,b);
+  setColor(i, r, g, b) {
+    this.ctx.setUniformf('objects['+i+'].color', r, g, b);
+  }
+
+  setType(i, t) {
+    this.ctx.setUniformi('objects['+i+'].type', t);
   }
 
   setMaterialProps(i, a=0, d=0, s=0, r=0) {
@@ -525,7 +546,7 @@ function configureTracer() {
       displayClickToEnable();
     }, 1500);
   } catch (e) {
-    alert('Inialization failed: ' + e);
+    alert('Initialization failed: ' + e);
     return;
   }
 }
