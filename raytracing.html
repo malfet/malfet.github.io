@@ -113,7 +113,7 @@ void ObjectFillProps(in Object obj, in vec3 point, out SurfaceProps props) {
   // Checked sphere pattern
   if (obj.type == 3) {
     vec3 lnorm = normalize(obj.rs * props.norm);
-    if (mod(floor(atan(lnorm.x/lnorm.z)*4.0),2.0) == 0.0
+    if (mod(floor((atan(lnorm.x/lnorm.z) + 1.57079632)*4.0),2.0) == 0.0
     ^^ mod(floor(acos(lnorm.y)*4.0),2.0) == 0.0) {
       props.color = vec3(1.0)-props.color;
     }
@@ -454,6 +454,11 @@ class RayTracerScene {
 
   }
 
+  animate(t) {
+    this.setRotateAndScale(0, 0, 1e-3*t, 0, 1.5);
+    this.render();
+  }
+
   render(x0 = -1.0, y0 = -1.0, x1 = 1.0, y1 = 1.0) {
     this.ctx.draw2DArray(this.ctx.PRIMITIVES.TRIANGLE_STRIP, 'coord', [x0, y0, x1, y0, x0, y1, x1, y1]);
   }
@@ -570,6 +575,9 @@ function configureTracer() {
       }
       displayClickToEnable();
     }, 1500);
+    setInterval(function() {
+       scene.animate(performance.now());
+    }, 100);
   } catch (e) {
     alert('Initialization failed: ' + e);
     return;
