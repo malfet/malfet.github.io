@@ -25,9 +25,10 @@ struct PointLight {
 };
 
 struct Object {
-  // For sphere, quat.xyz is center, quat.w is radius
-  // For plane, quat.xyz is normal, quat.w is D
-  vec4 quat;
+  // object origin
+  vec3 offs;
+  // Object rotation and scale matrices
+  mat3 rs, inv_rs;
   vec3 color;
   // Light coefficients
   float ambient, diffuse, specular, reflect;
@@ -56,37 +57,38 @@ float sqr(vec3 x) { return dot(x, x);}
 
 // Returns intersection point between ray and object or ray origin if there are no interesction
 vec3 ObjectIntersect(in Object obj, in Ray ray) {
+  Ray lr = Ray(obj.rs * (ray.origin - obj.offs), obj.rs * ray.dir);
   float distance = 0.0;
   if (obj.type == 2 || obj.type == 4) {
     // Intersection of ray with plane is a linear equation
-    float cf = dot(obj.quat.xyz, ray.dir);
+    float cf = lr.dir.z;
     // Return early if ray directions is perpendicular to plane normal
     if (abs(cf) < THRESHOLD) {
       return ray.origin;
     }
-    distance = -( dot(obj.quat.xyz, ray.origin ) + obj.quat.w ) / cf;
+    distance = -lr.origin.z / cf;
   }
-  if (obj.type == 1 || obj.type == 3) {
-    // Intersection of ray with sphere is a quadratic equation
-    // len(ray.origin + distance*ray.direction - sphere.location) = sphere.radius
-    // which is identical to
-    // sqr(distance) + 2*distance*dot(ray.direction, OC) + dot(OC,OC) - sqr(radius)
-    // where OC is ray.origin - sphere.location
 
-    vec3 oc = obj.quat.xyz - ray.origin;
-    float ocd = dot(oc, ray.dir);
-    float d4 = sqr(obj.quat.w) + sqr(ocd) - dot(oc, oc);
+  if (obj.type == 1 || obj.type == 3) {
+    // Intersection of ray with unit sphere is a quadratic equation
+    // len(lr.origin + distance*lr.dir) = 1
+    // which is identical to
+    // sqr(lr.dir)*sqr(distance) + 2*distance*dot(lr.dir, -lr.orig) + sqr(lr.orig) - 1 = 0
+
+    float dirlen = sqr(lr.dir);
+    float ocd = dot(-lr.origin, lr.dir);
+    float d4 = sqr(ocd) - dirlen*(sqr(lr.origin)-1.0);
     if (d4 < 0.0) {
       return ray.origin;
     }
     d4 = sqrt(d4);
-    distance = ocd - d4;
+    distance = (ocd - d4) / dirlen;
     if (distance < THRESHOLD) {
-      distance = ocd + d4;
+      distance = (ocd + d4) / dirlen;
     }
   }
   if (distance >= THRESHOLD) {
-    return ray.origin + distance * ray.dir;
+    return ray.origin + obj.inv_rs * distance * lr.dir;
   }
   return ray.origin;
 }
@@ -102,16 +104,17 @@ void ObjectFillProps(in Object obj, in vec3 point, out SurfaceProps props) {
   // Compute norm
   if (obj.type == 1 || obj.type == 3) {
     // Normal to the surface is vec from origin to point on surface
-    props.norm = normalize(props.point - obj.quat.xyz);
+    props.norm = normalize(props.point - obj.offs);
   } else {
     // Normal to plane is constant
-    props.norm  = obj.quat.xyz;
+    props.norm  = obj.inv_rs * vec3(0, 0, 1);
   }
 
   // Checked sphere pattern
   if (obj.type == 3) {
-    if (mod(floor(atan(props.norm.x/props.norm.z)*4.0),2.0) == 0.0
-    ^^ mod(floor(acos(props.norm.y)*4.0),2.0) == 0.0) {
+    vec3 lnorm = normalize(obj.rs * props.norm);
+    if (mod(floor(atan(lnorm.x/lnorm.z)*4.0),2.0) == 0.0
+    ^^ mod(floor(acos(lnorm.y)*4.0),2.0) == 0.0) {
       props.color = vec3(1.0)-props.color;
     }
   }
@@ -119,7 +122,7 @@ void ObjectFillProps(in Object obj, in vec3 point, out SurfaceProps props) {
   if (obj.type == 4) {
     vec3 px = props.norm.z == 0.0 ? vec3(-props.norm.y, props.norm.x, 0.0) : normalize(cross(props.norm, vec3(1.0,0,0)));
     vec3 py = cross(px,props.norm);
-    vec3 origin =  -obj.quat.w*obj.quat.xyz;
+    vec3 origin =  obj.offs;
     vec3 offs = props.point - origin;
     if (mod(floor(dot(offs,px)),2.0) == 0.0 ^^ mod(floor(dot(offs,py)),2.0) == 0.0) {
       props.color = vec3(1.0)-props.color;
@@ -236,6 +239,14 @@ function rotateZ(angle) {
     cos, -sin,  0,
     sin,  cos,  0,
       0,    0,  1,
+  ];
+}
+
+function identity(scale=1) {
+  return [
+    scale,     0,      0,
+        0, scale,      0,
+        0,     0,  scale,
   ];
 }
 
@@ -405,29 +416,34 @@ class RayTracerScene {
 
     // Spheres
     this.setType(0, 3);
-    ctx.setUniformf('objects[0].quat', 0, 1, 5, 1.5);
+    this.setOffs(0, 0, 1, 5, 1.5);
+    this.setRotateAndScale(0, 0.0, 0, 0, 1.5);
     this.setColor(0, 1, 1, 1);
     this.setMaterialProps(0, .1, .5, .6);
 
     this.setType(1, 1);
-    ctx.setUniformf('objects[1].quat', -3, 0, 4, 1);
+    this.setOffs(1, -3, 0, 4);
+    this.setRotateAndScale(1, 0, 0, .0, 1);
     this.setColor(1, 0, 1, 0);
     this.setMaterialProps(1, .1, .5, .6, 0);
 
     this.setType(2, 1);
-    ctx.setUniformf('objects[2].quat', 2, 0, 3, 1);
+    this.setOffs(2, 2, 0, 3);
+    this.setRotateAndScale(2, 0, 0, 0, 1);
     this.setColor(2, 1, 1, 0);
     this.setMaterialProps(2, .2, .5, .6, .3);
 
     this.setType(3, 3);
-    ctx.setUniformf('objects[3].quat', 10, 3.5, 0, 3);
+    this.setOffs(3, 10, 3.5, 0);
+    this.setRotateAndScale(3, 0, 0, 0, 3);
     this.setColor(3, 1, 1, 0);
     this.setMaterialProps(3, .2, .3, .3, .5);
 
 
     //plane
     this.setType(4, 2);
-    ctx.setUniformf('objects[4].quat', 0, 1, 0, 1);
+    this.setOffs(4, 0, -1, 0);
+    this.setRotateAndScale(4, -Math.PI/2, 0, 0, 1);
     this.setColor(4, 0, 0, 1);
     this.setMaterialProps(4, .1, .5, .4, .4);
 
@@ -448,6 +464,15 @@ class RayTracerScene {
 
   setType(i, t) {
     this.ctx.setUniformi('objects['+i+'].type', t);
+  }
+  setOffs(i, x, y, z) {
+    this.ctx.setUniformf('objects['+i+'].offs', x, y, z);
+  }
+  setRotateAndScale(i, longitude, latitude, spin, scale) {
+    var rs = mulMatMat(rotateZ(spin), mulMatMat(mulMatMat(rotateY(-latitude), rotateX(longitude)), identity(1/scale)));
+    var inv_rs = mulMatMat(rotateZ(-spin), mulMatMat(mulMatMat(rotateY(latitude), rotateX(-longitude)), identity(scale)));
+    this.ctx.setMatrix3fv('objects['+i+'].rs', rs);
+    this.ctx.setMatrix3fv('objects['+i+'].inv_rs', inv_rs);
   }
 
   setMaterialProps(i, a=0, d=0, s=0, r=0) {
