@@ -165,6 +165,10 @@ int Scene_Intersect(in Ray ray, out SurfaceProps props) {
     if (idx != bestIdx) continue;
     ObjectFillProps(objects[idx], bestPoint, props);
   }
+  // Invert normal if origin is under the surface pointing by normal
+  if (dot(ray.origin - props.point, props.norm) < 0.0) {
+    props.norm *= -1.0;
+  }
   return bestIdx;
 }
 
