@@ -100,31 +100,26 @@ void ObjectFillProps(in Object obj, in vec3 point, out SurfaceProps props) {
   props.diffuse = obj.diffuse;
   props.specular = obj.specular;
   props.reflect = obj.reflect;
+  vec3 lpoint = obj.rs * (point - obj.offs);
+  vec2 uv;
 
   // Compute norm
   if (obj.type == 1 || obj.type == 3) {
-    // Normal to the surface is vec from origin to point on surface
+    // Normal to the sphere is vec from origin to point on surface
     props.norm = normalize(props.point - obj.offs);
+    // UV coords of the sphere are spherical coords of point
+    uv = 3.0 * vec2(atan(lpoint.z, lpoint.x), asin(lpoint.y))/3.1415926;
   } else {
     // Normal to plane is constant
     props.norm  = obj.inv_rs * vec3(0, 0, 1);
+    // UV coords are simple xy of point in plane local coordinates
+    uv = .5 * lpoint.xy;
   }
 
-  // Checked sphere pattern
-  if (obj.type == 3) {
-    vec3 point = normalize(obj.rs * props.norm);
-    // UV coords of the sphere are spherical coords of point
-    vec2 uv = vec2(atan(point.z, point.x), asin(point.y))/3.1415926;
-    if ((fract(3.0*uv.x)-.5)*(fract(3.0*uv.y)-.5) > 0.0) {
-      props.color = vec3(1.0)-props.color;
-    }
-  }
-  // Checked plane pattern
-  if (obj.type == 4) {
-   // UV coords are simple xy of point in plane local coordinates
-    vec2 uv = .5 * (obj.rs * (point - obj.offs)).xy;
-    if ((fract(uv.x)-.5)*(fract(uv.y)-.5) > 0.0) {
-      props.color = vec3(1.0)-props.color;
+  // Checkered pattern
+  if (obj.type == 3 || obj.type == 4) {
+    if (sign((fract(uv.x)-.5)*(fract(uv.y)-.5)) > 0.0) {
+      props.color = vec3(1.0)-obj.color;
     }
   }
 }
