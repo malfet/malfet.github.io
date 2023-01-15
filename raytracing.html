@@ -112,19 +112,18 @@ void ObjectFillProps(in Object obj, in vec3 point, out SurfaceProps props) {
 
   // Checked sphere pattern
   if (obj.type == 3) {
-    vec3 lnorm = normalize(obj.rs * props.norm);
-    if (mod(floor((atan(lnorm.x/lnorm.z) + 1.57079632)*4.0),2.0) == 0.0
-    ^^ mod(floor(acos(lnorm.y)*4.0),2.0) == 0.0) {
+    vec3 point = normalize(obj.rs * props.norm);
+    // UV coords of the sphere are spherical coords of point
+    vec2 uv = vec2(atan(point.z, point.x), asin(point.y))/3.1415926;
+    if ((fract(3.0*uv.x)-.5)*(fract(3.0*uv.y)-.5) > 0.0) {
       props.color = vec3(1.0)-props.color;
     }
   }
   // Checked plane pattern
   if (obj.type == 4) {
-    vec3 px = props.norm.z == 0.0 ? vec3(-props.norm.y, props.norm.x, 0.0) : normalize(cross(props.norm, vec3(1.0,0,0)));
-    vec3 py = cross(px,props.norm);
-    vec3 origin =  obj.offs;
-    vec3 offs = props.point - origin;
-    if (mod(floor(dot(offs,px)),2.0) == 0.0 ^^ mod(floor(dot(offs,py)),2.0) == 0.0) {
+   // UV coords are simple xy of point in plane local coordinates
+    vec2 uv = .5 * (obj.rs * (point - obj.offs)).xy;
+    if ((fract(uv.x)-.5)*(fract(uv.y)-.5) > 0.0) {
       props.color = vec3(1.0)-props.color;
     }
   }
@@ -445,7 +444,7 @@ class RayTracerScene {
 
 
     //plane
-    this.setType(4, 2);
+    this.setType(4, 4);
     this.setOffs(4, 0, -1, 0);
     this.setRotateAndScale(4, -Math.PI/2, 0, 0, 1);
     this.setColor(4, 0, 0, 1);
