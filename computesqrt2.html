@@ -25,6 +25,7 @@ class ComputeSQRT {
                 this.d = d - one;
                 this.j = ten * this.j + this.d;
                 this.k += this.d;
+                this.digitsYielded += 1;
                 return this.d;
             }
         }
