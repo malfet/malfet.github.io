@@ -1,0 +1,57 @@
+<html>
+<head>
+    <title>Compute square root of 2 digits using BigInt</title>
+</head>
+<script>
+const one = BigInt(1);
+const ten = BigInt(10);
+const twenty = BigInt(20);
+const hundred = BigInt(100);
+
+// Adapted from https://rosettacode.org/wiki/Square_root_by_hand
+class ComputeSQRT {
+    constructor(val = 2) {
+        this.val = BigInt(val);
+        this.j = BigInt(Math.floor(Math.sqrt(val)));
+        this.k = BigInt(this.j);
+        this.d = BigInt(this.j);
+        this.digitsYielded = 0;
+    }
+    yieldDigit() {
+        this.val = hundred * (this.val - this.k * this.d);
+        this.k = twenty * this.j;
+        for(let d = one; d <= ten; d++) {
+            if (this.val < (this.k + d) * d) {
+                this.d = d - one;
+                this.j = ten * this.j + this.d;
+                this.k += this.d;
+                return this.d;
+            }
+        }
+    }
+}
+
+function configureSpigot() {
+    let spigot = new ComputeSQRT();
+    const maxDigits = 1e4;
+    const maxDuration = 5;
+    let sqrt = "<math><msqrt><mi>2</mi></msqrt></math>=1.";
+    const computeDigits = function() {
+        const start = performance.now();
+        while (spigot.digitsYielded < maxDigits && performance.now() - start < maxDuration) {
+            sqrt += spigot.yieldDigit() + "&shy;";
+        }
+        if (spigot.digitsYielded >= maxDigits) {
+            sqrt += "...";
+        }
+        document.body.innerHTML = sqrt;
+        if (spigot.digitsYielded < maxDigits) {
+            window.requestAnimationFrame(computeDigits);
+        }
+    };
+    computeDigits();
+}
+</script>
+<BODY onload="configureSpigot()">
+        <math><msqrt><mi>2</mi></msqrt></math>=1.4142... (to be overwritten by the script)</BODY>
+</html>
