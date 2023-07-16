@@ -116,10 +116,10 @@ void FillProps(in vec3 point, in float mat, out SurfaceProps props) {
   for(int idx = 0 ; idx < numObjects; idx++) {
     if (idx != matIdx) continue;
     props.color = objects[idx].color;
-    props.ambient = objects[0].ambient;
-    props.diffuse = objects[0].diffuse;
-    props.specular = objects[0].specular;
-    props.reflect = objects[0].reflect;
+    props.ambient = objects[idx].ambient;
+    props.diffuse = objects[idx].diffuse;
+    props.specular = objects[idx].specular;
+    props.reflect = objects[idx].reflect;
   }
   // Implement checkerboard pattern for plane
   if (matIdx == 3) {
