@@ -1,0 +1,573 @@
+<html>
+<head>
+  <title>RayMarching example</title>
+</head>
+<script type="x-shader/x-vertex" id="passThruVS">
+attribute vec2 coord;
+varying vec2 pos;
+void main(void) {
+  pos = coord;
+  gl_Position = vec4(coord, 0, 1.0);
+  gl_PointSize = 1.0;
+}
+</script>
+
+<script type="x-shader/x-fragment" id="rayMarchingFS">
+precision highp float;
+varying vec2 pos;
+
+const float THRESHOLD = 1e-2;
+const int MAX_STEP = 100;
+
+struct PointLight {
+  vec3 location;
+  vec3 color;
+  float attenuation;
+};
+
+struct Object {
+  // object origin
+  vec3 offs;
+  mat3 rs;
+  vec3 color;
+  // Light coefficients
+  float ambient, diffuse, specular, reflect;
+};
+
+struct Camera {
+  vec3 location;
+  mat3 rotation;
+};
+
+struct Ray {
+  vec3 origin, dir;
+};
+
+struct SurfaceProps {
+  // Light coefficients
+  float ambient, diffuse, specular, reflect;
+  vec3 point;
+  vec3 color;
+  vec3 norm;
+};
+
+// Scene defenition
+const int numLights = 2;
+const int numObjects = 4;
+uniform Object objects[numObjects];
+uniform PointLight lights[numLights];
+uniform Camera camera;
+
+float sqr(float x) { return x*x; }
+float sqr(vec3 x) { return dot(x, x);}
+
+
+float sphereSDF(vec3 p) {
+  return length(p) - 1.0;
+}
+
+float bumpySphereSDF(vec3 p) {
+   const float freq = 5.5;
+   const float amp = .4;
+   return length(p) - 1.0 - amp * sin(freq * p.x)*sin(freq * p.y)*sin(freq * p.z);
+}
+
+float planeSDF(vec3 p) {
+  return p.y + 1.0;
+}
+
+float torusSDF(vec3 p, vec2 t) {
+  vec2 q = vec2(length(p.xy) - t.x, p.z);
+  return length(q) - t.y;
+}
+
+
+// First argument is the distance, but 2nd is material
+
+vec2 sdfUnion(vec2 a, vec2 b) { return a.x < b.x ? a : b; }
+vec2 sdfUnion(vec2 a, vec2 b, vec2 c) { return sdfUnion(a, sdfUnion(b, c)); }
+vec2 sdfUnion(vec2 a, vec2 b, vec2 c, vec2 d) { return sdfUnion(sdfUnion(a, b), sdfUnion(c, d)); }
+
+vec2 sdf(vec3 p) {
+   return sdfUnion(vec2(bumpySphereSDF(objects[0].rs*(p-objects[0].offs)), 0.0),
+                   vec2(torusSDF(objects[1].rs*(p-objects[1].offs), vec2(1.0, .4)), 1.0),
+                   vec2(sphereSDF(objects[2].rs*(p-objects[2].offs)), 2.0),
+                   vec2(planeSDF(p), 3.0));
+}
+
+vec3 computeNormal(vec3 p) {
+  // Normal can be computed by sampling SDF around the surface
+  vec3 rc = vec3(0.0);
+  vec3 onehot[3];
+  onehot[0] = vec3(THRESHOLD, 0.0, 0.0);
+  onehot[1] = vec3(0.0, THRESHOLD, 0.0);
+  onehot[2] = vec3(0.0, 0.0, THRESHOLD);
+  for(int i = 0; i < 3; ++i) {
+    vec3 e = onehot[i];
+    rc += e * sdf(p + e).x - e * sdf(p - e).x;
+  }
+  return normalize(rc);
+}
+
+void FillProps(in vec3 point, in float mat, out SurfaceProps props) {
+  props.point = point;
+  props.norm = computeNormal(point);
+  int matIdx = int(floor(mat));
+  for(int idx = 0 ; idx < numObjects; idx++) {
+    if (idx != matIdx) continue;
+    props.color = objects[idx].color;
+    props.ambient = objects[0].ambient;
+    props.diffuse = objects[0].diffuse;
+    props.specular = objects[0].specular;
+    props.reflect = objects[0].reflect;
+  }
+  // Implement checkerboard pattern for plane
+  if (matIdx == 3) {
+    if (sign((fract(.2*point.x)-.5)*(fract(.2*point.z)-.5)) > 0.0) {
+      props.color = vec3(1.0) - props.color;
+    }
+  }
+}
+
+
+
+vec2 computeDistance(in Ray ray) {
+  float distance = 2.0*THRESHOLD;
+  for(int step = 0; step < MAX_STEP; ++step) {
+    vec2 rc= sdf(ray.origin + distance * ray.dir);
+    if (abs(rc.x) < THRESHOLD) {
+      return vec2(distance, rc.y);
+    }
+    distance += rc.x;
+  }
+  return vec2(-1.0);
+}
+
+
+bool Scene_Intersect(in Ray ray) {
+  return computeDistance(ray).x >= 0.0;
+}
+
+float Scene_Intersect(in Ray ray, out SurfaceProps props) {
+  vec2 rc = computeDistance(ray);
+  if (rc.x >= 0.0) {
+    FillProps(ray.origin + rc.x * ray.dir, rc.y, props);
+  }
+  return rc.x;
+}
+
+void main(void) {
+  Ray ray = Ray(camera.location, normalize(camera.rotation * vec3(.6 * pos.x, .6 * pos.y, 1.0)));
+  vec3 color = vec3(0.0);
+  float weight = 1.0;
+  SurfaceProps props;
+  for(int depth = 0; depth < 5; ++depth) {
+    float distance = Scene_Intersect(ray, props);
+    if (distance < 0.0) {
+      color += weight * vec3(0.196, 0.6, 0.8);
+      break;
+    }
+    color += weight * props.ambient * props.color;
+    for(int idx = 0; idx < numLights; ++idx) {
+      vec3 lightDir = lights[idx].location - props.point;
+      Ray lightRay = Ray(props.point, normalize(lightDir));
+      // Check if light is occluded
+      if (Scene_Intersect(lightRay)) continue;
+      float attenuation = sqr(lights[idx].attenuation)/dot(lightDir, lightDir);
+      float angle = abs(dot(lightRay.dir, props.norm));
+      if (angle < THRESHOLD) continue;
+
+      // Add diffuse light component
+      if (props.diffuse >= THRESHOLD)
+        color += weight*props.diffuse*angle*attenuation*lights[idx].color*props.color;
+      // Add specular light component using Blinn–Phong reflection mode
+      if (props.specular >= THRESHOLD) {
+        vec3 halfway = normalize(lightRay.dir - ray.dir);
+        color += weight*props.specular*attenuation*pow(dot(halfway, props.norm), 30.0)*lights[idx].color;
+      }
+    }
+    if (weight * props.reflect < THRESHOLD) {
+      break;
+    }
+    float viewAngle = dot(ray.dir, props.norm);
+    weight *= props.reflect;
+    ray.dir -= props.norm * 2.0 * viewAngle;
+    ray.origin = props.point;
+  }
+
+  gl_FragColor = vec4(color, 1.0);
+}
+</script>
+
+<script type="text/javascript">
+function rotateX(angle) {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return [
+    1,    0,    0,
+    0,  cos, -sin,
+    0,  sin,  cos,
+  ];
+}
+
+function rotateY(angle) {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return [
+    cos,    0,  sin,
+      0,    1,    0,
+   -sin,    0,  cos,
+  ];
+}
+
+function rotateZ(angle) {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return [
+    cos, -sin,  0,
+    sin,  cos,  0,
+      0,    0,  1,
+  ];
+}
+
+function identity(scale=1) {
+  return [
+    scale,     0,      0,
+        0, scale,      0,
+        0,     0,  scale,
+  ];
+}
+
+function mulMatVec(mat, vec) {
+  return [
+    vec[0]*mat[0] + vec[1]*mat[1] + vec[2]*mat[2],
+    vec[0]*mat[3] + vec[1]*mat[4] + vec[2]*mat[5],
+    vec[0]*mat[6] + vec[1]*mat[7] + vec[2]*mat[8],
+  ];
+}
+
+function mulMatMat(mata, matb) {
+  const c1 = mulMatVec(mata, [matb[0], matb[3], matb[6]])
+  const c2 = mulMatVec(mata, [matb[1], matb[4], matb[7]])
+  const c3 = mulMatVec(mata, [matb[2], matb[5], matb[8]])
+  return [
+    c1[0], c2[0], c3[0],
+    c1[1], c2[1], c3[1],
+    c1[2], c2[2], c3[2],
+  ];
+}
+
+
+class GLContext {
+  constructor(canvas) {
+    if (canvas == null)
+      throw 'Can not find canvas';
+    const ctx = canvas.getContext('webgl');
+    if (ctx == null)
+      throw 'Can not get WebGL context...';
+    ctx.viewport(0, 0, canvas.clientWidth, canvas.clientHeight);
+    ctx.clearColor(0, 0, 0, 1.0);
+    ctx.clear(ctx.COLOR_BUFFER_BIT);
+    this._ctx = ctx;
+    this.PRIMITIVES = {
+      POINTS: ctx.POINTS,
+      LINE_STRIP: ctx.LINE_STRIP,
+      LINES: ctx.LINES,
+      TRIANGLE_STRIP: ctx.TRIANGLE_STRIP,
+      TRIANGLES: ctx.TRIANGLES,
+    };
+    this.VERTEX_SHADER = ctx.VERTEX_SHADER;
+    this.FRAGMENT_SHADER = ctx.FRAGMENT_SHADER;
+  }
+
+  getGLContext() {
+    if (!this._ctx) throw 'Missing context';
+    return this._ctx;
+  }
+
+  compileShader(type, source) {
+    const glCtx = this.getGLContext();
+    var rc = glCtx.createShader(type);
+    glCtx.shaderSource(rc, source);
+    glCtx.compileShader(rc);
+    if (!glCtx.getShaderParameter(rc, glCtx.COMPILE_STATUS)) {
+      throw glCtx.getShaderInfoLog(rc) + ' in ' + source;
+    }
+    return rc;
+  }
+
+  getElementById(id) {
+    const element = document.getElementById(id);
+    if (element == null) {
+      throw 'Can not find shader by element id ' + id;
+    }
+     return element;
+  }
+
+  compileShaderById(id) {
+    const glCtx = this.getGLContext();
+    const element = this.getElementById(id);
+    const source = element.innerHTML;
+    if (element.type === 'x-shader/x-vertex') {
+      return this.compileShader(glCtx.VERTEX_SHADER, source);
+    }
+    if (element.type === 'x-shader/x-fragment') {
+      return this.compileShader(glCtx.FRAGMENT_SHADER, source);
+    }
+    throw 'Unknown shader type ' + element.type;
+  }
+
+  linkProgram(shaders) {
+    const glCtx = this.getGLContext();
+    const rc = glCtx.createProgram();
+    for(var cnt = 0; cnt < shaders.length; cnt++) {
+      if (!shaders[cnt]) {
+        throw 'Can not link program with null shaders';
+      }
+      glCtx.attachShader(rc, shaders[cnt]);
+    }
+    glCtx.linkProgram(rc);
+    if (!glCtx.getProgramParameter(rc, glCtx.LINK_STATUS)) {
+      throw glCtx.getProgramInfoLog(rc);
+    }
+    return rc;
+  }
+
+  setUniformf(name) {
+    const glCtx = this.getGLContext();
+    const prog = glCtx.getParameter(glCtx.CURRENT_PROGRAM);
+    const idx = glCtx.getUniformLocation(prog, name);
+    if (arguments.length == 2)
+      glCtx.uniform1f(idx, arguments[1]);
+    else if (arguments.length == 3)
+      glCtx.uniform2f(idx, arguments[1], arguments[2]);
+    else if (arguments.length == 4)
+      glCtx.uniform3f(idx, arguments[1], arguments[2], arguments[3]);
+    else if (arguments.length == 5)
+      glCtx.uniform4f(idx, arguments[1], arguments[2], arguments[3], arguments[4]);
+    else
+      throw "Unsupported number of uniform arguments";
+  }
+  setMatrix3fv(name, v) {
+    const glCtx = this.getGLContext();
+    const prog = glCtx.getParameter(glCtx.CURRENT_PROGRAM);
+    const idx = glCtx.getUniformLocation(prog, name);
+    if (v.length != 9)
+      throw "Unexpected number of 3x3 matrix arguments";
+    glCtx.uniformMatrix3fv(idx, false, v);
+  }
+
+  setUniformi(name) {
+    const glCtx = this.getGLContext();
+    const prog = glCtx.getParameter(glCtx.CURRENT_PROGRAM);
+    const idx = glCtx.getUniformLocation(prog, name);
+    if (arguments.length == 2)
+      glCtx.uniform1i(idx, arguments[1]);
+    else if (arguments.length == 3)
+      glCtx.uniform2i(idx, arguments[1], arguments[2]);
+    else if (arguments.length == 4)
+      glCtx.uniform3i(idx, arguments[1], arguments[2], arguments[3]);
+    else if (arguments.length == 5)
+      glCtx.uniform4i(idx, arguments[1], arguments[2], arguments[3], arguments[4]);
+    else
+      throw "Unsupported number of uniform arguments";
+  }
+
+
+  draw2DArray(type, name, arr) {
+    const glCtx = this.getGLContext();
+    const prog = glCtx.getParameter(glCtx.CURRENT_PROGRAM);
+    const idx = glCtx.getAttribLocation(prog, name);
+
+    var buf = glCtx.createBuffer();
+    glCtx.bindBuffer(glCtx.ARRAY_BUFFER, buf);
+    glCtx.bufferData(glCtx.ARRAY_BUFFER, new Float32Array(arr), glCtx.STATIC_DRAW);
+
+    glCtx.enableVertexAttribArray(idx);
+    glCtx.vertexAttribPointer(idx, 2, glCtx.FLOAT, false, 0, 0);
+
+    glCtx.drawArrays(type, 0, arr.length/2);
+    glCtx.deleteBuffer(buf);
+  }
+}
+
+class RayTracerScene {
+  constructor(canvas) {
+    const ctx = new GLContext(canvas);
+    const prog = ctx.linkProgram(['passThruVS', 'rayMarchingFS'].map(_ => ctx.compileShaderById(_)));
+    ctx.getGLContext().useProgram(prog);
+
+    this.ctx = ctx;
+    this.aspect = canvas.clientWidth/canvas.clientHeight;
+
+    this.setCamera();
+
+    // Bumpy sphere
+    this.setOffs(0, 2, 1, 3);
+    this.setRotateAndScale(0, 0.0, 0, 0, 1);
+    this.setColor(0, 0, 0, 1);
+    this.setMaterialProps(0, .1, .5, .6);
+
+    // Torus
+    this.setOffs(1, -3, 1, 4);
+    this.setRotateAndScale(1, 0, 0, .0, 1);
+    this.setColor(1, 1, 0, 0);
+    this.setMaterialProps(1, .1, .5, .6, 0);
+
+    // Sphere
+    this.setOffs(2, -.4, 1, 5);
+    this.setRotateAndScale(2, 0, 0, 0, 1.4);
+    this.setColor(2, 0, 1, 0);
+    this.setMaterialProps(2, .2, .5, .6, .3);
+
+    // Plane
+    this.setColor(3, 0.6, 0.8, 0.6);
+    this.setMaterialProps(3, .1, .5, .4, .4);
+
+    // Lights
+    ctx.setUniformf('lights[0].location', 8, 8, -5);
+    ctx.setUniformf('lights[0].color', 1, 1, 1);
+    ctx.setUniformf('lights[0].attenuation', 16);
+
+    ctx.setUniformf('lights[1].location', -8, 8, -5);
+    ctx.setUniformf('lights[1].color', 1, 1, 1);
+    ctx.setUniformf('lights[1].attenuation', 16);
+
+  }
+
+  animate(t) {
+    this.setRotateAndScale(0, 1e-3*t, 7e-4*t, 0, 1.0);
+    this.setRotateAndScale(1, 0, -1e-3*t, 0, 1.0);
+    this.render();
+  }
+
+  render(x0 = -1.0, y0 = -1.0, x1 = 1.0, y1 = 1.0) {
+    this.ctx.draw2DArray(this.ctx.PRIMITIVES.TRIANGLE_STRIP, 'coord', [x0, y0, x1, y0, x0, y1, x1, y1]);
+  }
+  setColor(i, r, g, b) {
+    this.ctx.setUniformf('objects['+i+'].color', r, g, b);
+  }
+
+  setOffs(i, x, y, z) {
+    this.ctx.setUniformf('objects['+i+'].offs', x, y, z);
+  }
+  setRotateAndScale(i, longitude, latitude, spin, scale) {
+    var rs = mulMatMat(rotateZ(spin), mulMatMat(mulMatMat(rotateY(-latitude), rotateX(longitude)), identity(1/scale)));
+    this.ctx.setMatrix3fv('objects['+i+'].rs', rs);
+  }
+  setMaterialProps(i, a=0, d=0, s=0, r=0) {
+    this.ctx.setUniformf('objects['+i+'].ambient',a);
+    this.ctx.setUniformf('objects['+i+'].diffuse',d);
+    this.ctx.setUniformf('objects['+i+'].specular',s);
+    this.ctx.setUniformf('objects['+i+'].reflect',r);
+  }
+
+  setCamera(x=0, y=0, z=-1.4) {
+    this.ctx.setUniformf('camera.location', x, y, z);
+    this.ctx.setMatrix3fv('camera.rotation', [this.aspect, 0, 0, 0, 1, 0, 0, 0, 1]);
+  }
+
+  setCameraRotation(longitude, latitude, spin) {
+    var mat = mulMatMat(rotateY(-latitude), rotateX(longitude));
+    for(var i = 0; i < 3; i++) {
+      mat[3*i] *= this.aspect;
+    }
+    this.ctx.setMatrix3fv('camera.rotation', mat);
+  }
+
+}
+
+
+var orientationEventReceived = false;
+
+function registerMotionEventListener() {
+  var compOrientation = {alpha: 0, beta: 0, gamma: 0};
+  window.addEventListener('devicemotion', function(event) {
+    orientationEventReceived = true;
+    compOrientation.alpha += event.rotationRate.alpha*event.interval;
+    compOrientation.beta += event.rotationRate.beta*event.interval;
+    compOrientation.gamma += event.rotationRate.gamma*event.interval;
+
+    const alpha = Math.PI* compOrientation.alpha / 180;
+    const beta = Math.PI* compOrientation.beta / 180;
+    const gamma = Math.PI* compOrientation.gamma / 180;
+    if (window.orientation == 0.0) {
+      scene.setCameraRotation(alpha, beta, gamma);
+    } else if (window.orientation == 90.0) {
+        scene.setCameraRotation(beta, alpha, alpha);
+    } else if (window.orientation == -90.0) {
+        scene.setCameraRotation(-beta, -alpha, alpha);
+    } else {
+      scene.setCameraRotation(0, 0, 0);
+    }
+    scene.render();
+  });
+}
+
+function requestPermissions() {
+  if (typeof DeviceMotionEvent === 'undefined') {
+    return;
+  }
+  if (typeof DeviceMotionEvent.requestPermission !== 'function') {
+    return;
+  }
+  DeviceMotionEvent.requestPermission(function(state) {
+    if (state == 'granted') {
+      registerMotionEventListener();
+    }
+  }).catch(console.error);
+}
+
+function displayClickToEnable() {
+  document.getElementById('click-to-enable').style.visibility='visible';
+}
+
+function configureTracer() {
+  const canvas = document.getElementById('canvas');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  try {
+    scene = new RayTracerScene(canvas);
+    scene.render();
+    var cameraDistance = -1.4;
+    var xn = 0.0;
+    var yn = 0.0;
+    canvas.addEventListener('mousemove', function(event) {
+      xn = scene.aspect*(event.x/canvas.clientWidth - .5);
+      yn = (event.y/canvas.clientHeight - .5);
+      scene.setCamera(xn, yn, cameraDistance);
+      scene.render();
+    });
+    canvas.addEventListener('wheel', function(event) {
+      cameraDistance += 1e-3 * event.deltaY;
+      scene.setCamera(xn, yn, cameraDistance);
+      scene.render();
+    });
+    registerMotionEventListener();
+    setTimeout(function() {
+      if (orientationEventReceived) {
+        return;
+      }
+      displayClickToEnable();
+    }, 1500);
+    setInterval(function() {
+       scene.animate(performance.now());
+    }, 100);
+  } catch (e) {
+    alert('Initialization failed: ' + e);
+    return;
+  }
+}
+
+</script>
+
+</script>
+<body onLoad="configureTracer();">
+<DIV>
+  <H1 style="display:inline">RayMarching over SDF</H1>
+  <DIV style="display:inline;visibility:hidden" id="click-to-enable">
+   <INPUT TYPE="submit" onClick="requestPermissions();" value="Click here to enable orientation events" />
+  </DIV>
+  <canvas id="canvas" width="1024px" height="1024px"></canvas>
+</body>
+</html>
