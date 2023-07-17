@@ -399,8 +399,9 @@ class RayTracerScene {
 
     this.ctx = ctx;
     this.aspect = canvas.clientWidth/canvas.clientHeight;
+    this.defaultCameraDistance = this.aspect > 1.0 ? -1.4 : -5.0;
 
-    this.setCamera();
+    this.setCamera(0, 0, this.defaultCameraDistance);
 
     // Bumpy sphere
     this.setOffs(0, 2, 1, 3);
@@ -462,7 +463,7 @@ class RayTracerScene {
     this.ctx.setUniformf('objects['+i+'].reflect',r);
   }
 
-  setCamera(x=0, y=0, z=-1.4) {
+  setCamera(x, y, z) {
     this.ctx.setUniformf('camera.location', x, y, z);
     this.ctx.setMatrix3fv('camera.rotation', [this.aspect, 0, 0, 0, 1, 0, 0, 0, 1]);
   }
@@ -529,7 +530,7 @@ function configureTracer() {
   try {
     scene = new RayTracerScene(canvas);
     scene.render();
-    var cameraDistance = -1.4;
+    var cameraDistance = scene.defaultCameraDistance;
     var xn = 0.0;
     var yn = 0.0;
     canvas.addEventListener('mousemove', function(event) {
