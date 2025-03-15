@@ -1,7 +1,8 @@
 <html>
 <head>
-    <title>Compute PI digits using BigInt</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Compute PI digits using BigInt</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="main.css">
 </head>
 <script>
 const one = BigInt(1);
@@ -61,7 +62,7 @@ function configureSpigot() {
         if (spigot.digitsYielded >= maxDigits) {
             pi += "...";
         }
-        document.body.innerHTML = pi;
+        document.getElementById('piDisplay').innerHTML = pi;
         if (spigot.digitsYielded < maxDigits) {
             window.requestAnimationFrame(computeDigits);
         }
@@ -69,6 +70,16 @@ function configureSpigot() {
     computeDigits();
 }
 </script>
-<BODY onload="configureSpigot()">
-          &#960;=3.14... (to be overwritten by the script)</BODY>
+<body onload="configureSpigot()">
+  <div class="container"
+    <header>
+      <h1> Compue PI using BigInt and spigot algorith</h1>
+    </header>
+    <div class="pi-display" id="piDisplay">
+      &#960;=3.14... (to be updated by the script)
+    </div>
+    <div class="info">
+      Based on "Unbounded Spigot Algorithms for the Digits of Pi" by Jeremy Gibbons
+    </div>
+</body>
 </html>
