@@ -1,32 +1,44 @@
 <html>
 <head>
-  <title>Home Page</title>
+  <title>Malfet's home Page</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="main.css">
 </head>
-<body style="font-size:16px" >
-        Not much there now, just a link to <A HREF="mandelbrot.html?usePalette">Mandelbort Set</A> renderer. <A HREF="mandelbrot.html?usePaletteoverfloat">Here</A> is 1,000,000 zoom-in centerred around 0.2807024158978315-0.011177972555812295i<BR/>
-And rendering of <A HREF="lyapunov.html"> Lyapunov exponent for logisitc equation</A>.<BR/>
-Rendering of Julia Set for c-values from <A HREF="https://en.wikipedia.org/wiki/The_Beauty_of_Fractals">The Beauty of Fractals</A>:
-<UL style="margin-block-start:0;margin-block-end:0">
-  <LI><A HREF="julia.html?c=-0.12375+0.565508i">c=-0.12375+0.565508i</A>
-  <LI><A HREF="julia.html?c=-0.12+0.74i">c=-0.12+0.74i</A>
-  <LI><A HREF="julia.html?c=-0.481762-0.531657i">c=-0.481762-0.531657i</A>
-  <LI><A HREF="julia.html?c=-0.39054-0.58679i">c=-0.39054-0.58679i</A>
-  <LI><A HREF="julia.html?c=0.27334+0.00742i&numSteps=1024">c=0.27334+0.00742i</A>
-  <LI><A HREF="julia.html?c=-1.25+0.0i">c=-1.25</A>&nbsp;(<A HREF="julia.html?c=-1.25+0.0i&numDecomp=6">6 way decomposition</A>)
-  <LI><A HREF="julia.html?c=-0.11+0.6557i&numSteps=1024">c=-0.11+0.6557i</A>&nbsp;(<A HREF="julia.html?c=-0.11+0.6557i&numSteps=1024&numDecomp=6">6 way decomposition</A> rather then escape time)
-  <LI><A HREF="julia.html?c=-0.11031-0.67037i">c=-0.11031+0.67037i</A>
-  <LI><A HREF="julia.html?c=0.0-1.0i&numSteps=30">c=i aka dendrite (reduced number of iterationrs to make it visible)</A>
-  <LI><A HREF="julia.html?c=-0.194+0.6557i">c=-0.194+0.6557i</A>
-  <LI><A HREF="julia.html?c=-0.15652+1.03225i">c=-0.15652+1.03225i</A>
-  <LI><A HREF="julia.html?c=-0.74543+0.11301i">c=-0.74543+0.11301i</A>&nbsp;(<A HREF="julia.html?c=-0.74543+0.11301i&numDecomp=6">6 way decomposition</A>)
-</UL>
-A curious case of <A HREF="roundoffVisualization.html">disappearing roundoff errors</A> (updated Nov 2022 with FP64 WebGL workaround).<BR/>
-And a very primitive <A HREF="raytracing.html">Ray Tracer</A>.<BR/>
-Page showing <A HREF="whereami.html">device orientation and motion</A> events.<BR/>
-Incomplete WebAudio based parser of <A HREF="mmlplay.html">Music Macro Language</A><BR/>
-<A HREF="computepi.html">Compute first 1000 digits of Pi</A> using spigot algorithm and BigInt.<BR/>
-<A HREF="computesqrt2.html">Compute first 1000 digits of square root of 2</A> using BigInt.<BR/>
-After several unsuccessul attempts to implement fourth degree polinomial solver as OpenGLES shader I've implemented <A HREF="raymarching.html">Ray Marching tracer</A>, using SDF definition for torus from Inigo Quelez <A HREF="https://iquilezles.org/articles/distfunctions/">3D SDFs</A> collection.<BR/>
+<body>
+  <div class="container">
+    <header>
+      <h1> Malfet's home page </h1>
+    </header>
+    Not much there now, just a collection of web-toys I wrote in my spare time.
+    <p>
+    For example <A HREF="mandelbrot.html?usePalette">Mandelbort Set</A> visualization as WebGL fragment shader.<BR/>
+    <A HREF="mandelbrot.html?usePaletteoverfloat">Here</A> is 1,000,000 zoom-in centerred around 0.2807024158978315-0.011177972555812295i<BR/>
+    And rendering of <A HREF="lyapunov.html"> Lyapunov exponent for logisitc equation</A>.<BR/>
+    Rendering of Julia Set for c-values from <A HREF="https://en.wikipedia.org/wiki/The_Beauty_of_Fractals">The Beauty of Fractals</A>:
+    <UL style="margin-block-start:0;margin-block-end:0">
+      <LI><A HREF="julia.html?c=-0.12375+0.565508i">c=-0.12375+0.565508i</A>
+      <LI><A HREF="julia.html?c=-0.12+0.74i">c=-0.12+0.74i</A>
+      <LI><A HREF="julia.html?c=-0.481762-0.531657i">c=-0.481762-0.531657i</A>
+      <LI><A HREF="julia.html?c=-0.39054-0.58679i">c=-0.39054-0.58679i</A>
+      <LI><A HREF="julia.html?c=0.27334+0.00742i&numSteps=1024">c=0.27334+0.00742i</A>
+      <LI><A HREF="julia.html?c=-1.25+0.0i">c=-1.25</A>&nbsp;(<A HREF="julia.html?c=-1.25+0.0i&numDecomp=6">6 way decomposition</A>)
+      <LI><A HREF="julia.html?c=-0.11+0.6557i&numSteps=1024">c=-0.11+0.6557i</A>&nbsp;(<A HREF="julia.html?c=-0.11+0.6557i&numSteps=1024&numDecomp=6">6 way decomposition</A> rather then escape time)
+      <LI><A HREF="julia.html?c=-0.11031-0.67037i">c=-0.11031+0.67037i</A>
+      <LI><A HREF="julia.html?c=0.0-1.0i&numSteps=30">c=i aka dendrite (reduced number of iterationrs to make it visible)</A>
+      <LI><A HREF="julia.html?c=-0.194+0.6557i">c=-0.194+0.6557i</A>
+      <LI><A HREF="julia.html?c=-0.15652+1.03225i">c=-0.15652+1.03225i</A>
+      <LI><A HREF="julia.html?c=-0.74543+0.11301i">c=-0.74543+0.11301i</A>&nbsp;(<A HREF="julia.html?c=-0.74543+0.11301i&numDecomp=6">6 way decomposition</A>)
+    </UL>
+    A curious case of <A HREF="roundoffVisualization.html">disappearing roundoff errors</A> (updated Nov 2022 with FP64 WebGL workaround, but still broken in modern Safari).<BR/>
+    </p>
+    <p>
+    Very primitive <A HREF="raytracing.html">Ray Tracer</A>.<BR/>
+    After several unsuccessul attempts to implement fourth degree polinomial solver as OpenGLES shader I've implemented <A HREF="raymarching.html">Ray Marching tracer</A>, using SDF definition for torus from Inigo Quelez <A HREF="https://iquilezles.org/articles/distfunctions/">3D SDFs</A> collection.<BR/>
+    Page showing <A HREF="whereami.html">device orientation and motion</A> events.<BR/>
+    </p>
+    <A HREF="computepi.html">Compute first 1000 digits of Pi</A> using spigot algorithm and BigInt.<BR/>
+    <A HREF="computesqrt2.html">Compute first 1000 digits of square root of 2</A> using BigInt.<BR/>
+    Incomplete WebAudio based parser of <A HREF="mmlplay.html">Music Macro Language</A><BR/>
+  </div>
 </body>
 </html>
