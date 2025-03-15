@@ -1,6 +1,6 @@
 <html>
 <head>
-  <title>Compute square root of 2 digits using BigInt</title>
+  <title>Compute square root using BigInt</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="main.css">
 </head>
@@ -12,7 +12,7 @@ const hundred = BigInt(100);
 
 // Adapted from https://rosettacode.org/wiki/Square_root_by_hand
 class ComputeSQRT {
-    constructor(val = 2) {
+    constructor(val) {
         this.val = BigInt(val);
         this.j = BigInt(Math.floor(Math.sqrt(val)));
         this.k = BigInt(this.j);
@@ -35,10 +35,16 @@ class ComputeSQRT {
 }
 
 function configureSpigot() {
-    let spigot = new ComputeSQRT();
+    const valMatch = window.location.search.match(/[&?]value=(\d+)/);
+    const val = valMatch ? Number(valMatch[1]) : 2;
+    let spigot = new ComputeSQRT(val);
+    const truncSqrt = Math.trunc(Math.sqrt(val));
     const maxDigits = 1e4;
     const maxDuration = 5;
-    let sqrt = "<math><msqrt><mi>2</mi></msqrt></math>=1.";
+    let sqrt = "<math><msqrt><mi>" + val + "</mi></msqrt></math>=" + truncSqrt +".";
+    if (val != 2) {
+      document.getElementById("titleText").innerHTML = "Compute <math><msqrt><mi>" + val + "</mi></sqrt></math> using BigInt";
+    }
     const computeDigits = function() {
         const start = performance.now();
         while (spigot.digitsYielded < maxDigits && performance.now() - start < maxDuration) {
@@ -58,7 +64,7 @@ function configureSpigot() {
 <body onload="configureSpigot()">
   <div class="container"
     <header>
-      <h1> Compute <math><msqrt><mi>2</mi></sqrt></math> using BigInt</h1>
+      <h1 id="titleText">Compute <math><msqrt><mi>2</mi></sqrt></math> using BigInt</h1>
     </header>
     <div class="pi-display" id="sqrtDiv">
       <math><msqrt><mi>2</mi></msqrt></math>=1.4142... (to be overwritten by the script)
