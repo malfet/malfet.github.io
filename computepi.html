@@ -49,34 +49,57 @@ class ComputePI {
     }
 }
 
-function configureSpigot() {
-    const maxDigits = 1e4;
-    const maxDuration = 15; // ms per frame
-    let spigot = new ComputePI();
-    let pi = "&#960;=3.";
-    const computeDigits = function() {
-        const start = performance.now();
-        while (spigot.digitsYielded < maxDigits && performance.now() - start < maxDuration) {
-            pi += spigot.yieldDigit() + "&shy;";
-        }
-        if (spigot.digitsYielded >= maxDigits) {
-            pi += "...";
-        }
-        document.getElementById('piDisplay').innerHTML = pi;
-        if (spigot.digitsYielded < maxDigits) {
-            window.requestAnimationFrame(computeDigits);
-        }
-    };
+// Globals
+const maxDigits = 1e4;
+const maxDuration = 15; // ms per frame
+let spigot;
+let pi_text;
+let compute_start_time;
+let is_running = false;
+
+function computeDigits() {
+    if (!is_running) {
+        return;
+    }
+    const frame_start = performance.now();
+    while (spigot.digitsYielded < maxDigits && performance.now() - frame_start < maxDuration) {
+        pi_text += spigot.yieldDigit() + "&shy;";
+    }
+    if (spigot.digitsYielded >= maxDigits) {
+        pi_text += "...";
+        is_running = false;
+    }
+    const time_elapsed_sec = ((performance.now() - compute_start_time) / 1000).toFixed(2);
+    document.getElementById('piDisplay').innerHTML = pi_text;
+    document.getElementById('timeElapsed').textContent = "Time: " + time_elapsed_sec + "s";
+    document.getElementById('digitCount').textContent = "Digits: " + spigot.digitsYielded;
+    if (is_running) {
+        window.requestAnimationFrame(computeDigits);
+    }
+}
+
+function initializeComputation() {
+    if (is_running) {
+        return;
+    }
+    spigot = new ComputePI();
+    pi_text = "&#960;=3.";
+    is_running = true;
+    compute_start_time = performance.now();
     computeDigits();
 }
 </script>
-<body onload="configureSpigot()">
+<body onload="initializeComputation()">
   <div class="container"
     <header>
       <h1> Compute PI using BigInt</h1>
     </header>
     <div class="pi-display" id="piDisplay">
       &#960;=3.14... (to be updated by the script)
+    </div>
+    <div class="stats">
+      <span id="digitCount">Digits: 0</span>
+      <span id="timeElapsed">Time: 0.00s</span>
     </div>
     <div class="info">
       Based on "Unbounded Spigot Algorithms for the Digits of Pi" by Jeremy Gibbons
