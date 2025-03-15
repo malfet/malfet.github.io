@@ -50,9 +50,9 @@ class ComputePI {
 }
 
 function configureSpigot() {
-    let spigot = new ComputePI();
     const maxDigits = 1e4;
-    const maxDuration = 5;
+    const maxDuration = 15; // ms per frame
+    let spigot = new ComputePI();
     let pi = "&#960;=3.";
     const computeDigits = function() {
         const start = performance.now();
