@@ -1,7 +1,8 @@
 <html>
 <head>
-    <title>Compute square root of 2 digits using BigInt</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Compute square root of 2 digits using BigInt</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="main.css">
 </head>
 <script>
 const one = BigInt(1);
@@ -46,7 +47,7 @@ function configureSpigot() {
         if (spigot.digitsYielded >= maxDigits) {
             sqrt += "...";
         }
-        document.body.innerHTML = sqrt;
+        document.getElementById("sqrtDiv").innerHTML = sqrt;
         if (spigot.digitsYielded < maxDigits) {
             window.requestAnimationFrame(computeDigits);
         }
@@ -54,6 +55,16 @@ function configureSpigot() {
     computeDigits();
 }
 </script>
-<BODY onload="configureSpigot()">
-        <math><msqrt><mi>2</mi></msqrt></math>=1.4142... (to be overwritten by the script)</BODY>
+<body onload="configureSpigot()">
+  <div class="container"
+    <header>
+      <h1> Compute <math><msqrt><mi>2</mi></sqrt></math> using BigInt</h1>
+    </header>
+    <div class="pi-display" id="sqrtDiv">
+      <math><msqrt><mi>2</mi></msqrt></math>=1.4142... (to be overwritten by the script)
+    </div>
+    <div class="info">
+      Adapted from Square root by hand published on <A HREF="https://rosettacode.org">Rosetta Code</A>
+    </div>
+</body>
 </html>
