@@ -4,6 +4,21 @@
     --background-color: #f8f9fa;
     --text-color: #333;
     --pi-digits-color: #2980b9;
+    --link-color: #0066cc;
+    --visited-link-color: #551a8b;
+}
+
+/* Dark mode variables */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --primary-color: #64b5f6;
+        --secondary-color: #b0bec5;
+        --background-color: #263238;
+        --text-color: #eceff1;
+        --pi-digits-color: #81d4fa;
+        --link-color: #82b1ff;
+        --visited-link-color: #bb86fc;
+    }
 }
 
 body {
@@ -28,6 +43,14 @@ body {
     padding: 20px;
     margin-top: 20px;
     background-color: white;
+}
+
+/* Update container background color for dark mode */
+@media (prefers-color-scheme: dark) {
+    .container {
+        background-color: #37474f;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    }
 }
 
 header {
@@ -64,6 +87,12 @@ h1 {
     text-align: center;
 }
 
+@media (prefers-color-scheme: dark) {
+    .info {
+        color: #b0bec5;
+    }
+}
+
 .controls {
     display: flex;
     justify-content: center;
@@ -86,6 +115,12 @@ button:hover {
     background-color: #2980b9;
 }
 
+@media (prefers-color-scheme: dark) {
+    button:hover {
+        background-color: #90caf9;
+    }
+}
+
 .stats {
     display: flex;
     justify-content: space-between;
@@ -94,12 +129,32 @@ button:hover {
     margin-top: 15px;
 }
 
-.dark-mode {
-    --primary-color: #64b5f6;
-    --secondary-color: #b0bec5;
-    --background-color: #263238;
-    --text-color: #eceff1;
-    --pi-digits-color: #81d4fa;
+@media (prefers-color-scheme: dark) {
+    .stats {
+        color: #b0bec5;
+    }
+}
+
+/* Link styles for light mode */
+a {
+    color: var(--link-color);
+    text-decoration: none;
+    transition: color 0.2s;
+}
+
+a:visited {
+    color: var(--visited-link-color);
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+/* Dark mode link overrides */
+@media (prefers-color-scheme: dark) {
+    a:visited {
+        color: var(--visited-link-color);
+    }
 }
 
 @media (max-width: 600px) {
