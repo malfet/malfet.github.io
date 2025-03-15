@@ -6,6 +6,16 @@
     --pi-digits-color: #2980b9;
     --link-color: #0066cc;
     --visited-link-color: #551a8b;
+    --digit-color-0: #3498db;
+    --digit-color-1: #e74c3c;
+    --digit-color-2: #2ecc71;
+    --digit-color-3: #f39c12;
+    --digit-color-4: #9b59b6;
+    --digit-color-5: #1abc9c;
+    --digit-color-6: #d35400;
+    --digit-color-7: #2980b9;
+    --digit-color-8: #27ae60;
+    --digit-color-9: #8e44ad;
 }
 
 /* Dark mode variables */

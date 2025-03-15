@@ -57,13 +57,17 @@ let pi_text;
 let compute_start_time;
 let is_running = false;
 
+function colorizeDigit(digit) {
+  return "<span style='color: var(--digit-color-" + digit + ");'>" + digit + "</span>"
+}
+
 function computeDigits() {
     if (!is_running) {
         return;
     }
     const frame_start = performance.now();
     while (spigot.digitsYielded < maxDigits && performance.now() - frame_start < maxDuration) {
-        pi_text += spigot.yieldDigit() + "&shy;";
+        pi_text += colorizeDigit(spigot.yieldDigit()) + "&shy;";
     }
     if (spigot.digitsYielded >= maxDigits) {
         pi_text += "...";
