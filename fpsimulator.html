@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Floating Point Simulator</title>
+<style>
+:root {
+  --bg: #ffffff; --fg: #1a1a2e; --card-bg: #f8f9fa; --border: #dee2e6;
+  --sign-color: #c0392b; --exp-color: #2471a3; --man-color: #1e8449;
+  --sign-bg: #fdecea; --exp-bg: #eaf2f8; --man-bg: #e8f8f5;
+  --btn-bg: #e9ecef; --btn-hover: #dee2e6; --btn-active: #2471a3;
+  --btn-active-text: #fff; --input-bg: #fff; --code-bg: #f1f3f5; --muted: #6c757d;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1a2e; --fg: #e0e0e0; --card-bg: #16213e; --border: #333;
+    --sign-bg: #3d1f1f; --exp-bg: #1a2e3d; --man-bg: #1a3d2a;
+    --btn-bg: #2a2a4a; --btn-hover: #3a3a5a; --input-bg: #0f3460;
+    --code-bg: #2a2a4a; --muted: #999;
+  }
+  .cat-Normal { background: #1a3d2a; color: #7dcea0; }
+  .cat-Subnormal { background: #3d3a1a; color: #f0c674; }
+  .cat-Zero { background: #2a2a3a; color: #adb5bd; }
+  .cat-Infinity, .cat-NaN { background: #3d1a1a; color: #f0a0a0; }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg); color: var(--fg); line-height: 1.6;
+  padding: 2rem; max-width: 960px; margin: 0 auto;
+}
+h1 { font-size: 1.8rem; margin-bottom: 1.5rem; }
+h2 { font-size: 1rem; margin-bottom: .75rem; font-weight: 600; color: var(--muted);
+     text-transform: uppercase; letter-spacing: .05em; }
+section { background: var(--card-bg); border: 1px solid var(--border);
+          border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem; }
+.row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.preset-btn {
+  padding: .35rem .7rem; border: 1px solid var(--border); border-radius: 4px;
+  background: var(--btn-bg); color: var(--fg); cursor: pointer; font-size: .85rem;
+}
+.preset-btn:hover { background: var(--btn-hover); }
+.preset-btn.active { background: var(--btn-active); color: var(--btn-active-text);
+                     border-color: var(--btn-active); }
+label { font-size: .9rem; display: flex; align-items: center; gap: .3rem; }
+input[type="number"] { width: 60px; padding: .3rem .4rem; border: 1px solid var(--border);
+  border-radius: 4px; background: var(--input-bg); color: var(--fg); font-size: .9rem; }
+input[type="text"] {
+  flex: 1; min-width: 120px; padding: .45rem .6rem; border: 1px solid var(--border);
+  border-radius: 4px; background: var(--input-bg); color: var(--fg); font-size: 1rem;
+  font-family: 'SF Mono', Consolas, monospace;
+}
+button.primary {
+  padding: .45rem 1rem; border: 1px solid var(--btn-active); border-radius: 4px;
+  background: var(--btn-active); color: var(--btn-active-text); cursor: pointer;
+  font-size: .9rem; font-weight: 600;
+}
+.info { font-size: .8rem; color: var(--muted); margin-top: .4rem; }
+
+/* Bit display */
+#bit-container { display: flex; flex-wrap: wrap; gap: 2px; margin: .5rem 0; }
+.bit {
+  width: 26px; height: 30px; display: flex; align-items: center; justify-content: center;
+  font-family: 'SF Mono', Consolas, monospace; font-size: .85rem; font-weight: 700;
+  cursor: pointer; border-radius: 3px; user-select: none; transition: transform .1s;
+}
+.bit:hover { transform: scale(1.15); z-index: 1; }
+.bit.sign { background: var(--sign-bg); color: var(--sign-color); border: 1.5px solid var(--sign-color); }
+.bit.exponent { background: var(--exp-bg); color: var(--exp-color); border: 1.5px solid var(--exp-color); }
+.bit.mantissa { background: var(--man-bg); color: var(--man-color); border: 1.5px solid var(--man-color); }
+.bit-sep { width: 6px; }
+#bit-indices { display: flex; flex-wrap: wrap; gap: 2px; }
+.bit-idx { width: 26px; text-align: center; font-size: .55rem; color: var(--muted); font-family: monospace; }
+.bit-idx-sep { width: 6px; }
+
+/* Legend */
+.legend { display: flex; gap: 1rem; font-size: .8rem; margin-bottom: .5rem; }
+.legend span { display: flex; align-items: center; gap: .3rem; }
+.legend-swatch { width: 12px; height: 12px; border-radius: 2px; }
+
+/* Details */
+.details { display: grid; grid-template-columns: auto 1fr; gap: .2rem .8rem; font-size: .9rem; }
+.details dt { font-weight: 600; color: var(--muted); }
+.details dd { font-family: 'SF Mono', Consolas, monospace; word-break: break-all; }
+.formula {
+  background: var(--code-bg); padding: .6rem .8rem; border-radius: 4px;
+  font-family: 'SF Mono', Consolas, monospace; font-size: .82rem;
+  line-height: 1.7; margin-top: .6rem; white-space: pre-wrap;
+}
+.cat-badge { display: inline-block; padding: .1rem .45rem; border-radius: 3px;
+             font-size: .8rem; font-weight: 600; }
+.cat-Normal { background: #d4edda; color: #155724; }
+.cat-Subnormal { background: #fff3cd; color: #856404; }
+.cat-Zero { background: #e2e3e5; color: #383d41; }
+.cat-Infinity, .cat-NaN { background: #f8d7da; color: #721c24; }
+.match { color: #27ae60; } .mismatch { color: #e74c3c; }
+.native-cmp { margin-top: .6rem; padding: .4rem .6rem; background: var(--code-bg);
+              border-radius: 4px; font-size: .82rem; font-family: monospace; }
+select { padding: .4rem; border: 1px solid var(--border); border-radius: 4px;
+         background: var(--input-bg); color: var(--fg); }
+.calc-result { margin-top: .6rem; font-family: monospace; font-size: .88rem;
+               white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1>Floating Point Simulator</h1>
+
+<section>
+  <h2>Format</h2>
+  <div class="row" id="presets" style="margin-bottom:.75rem"></div>
+  <div class="row">
+    <label>Exponent bits: <input type="number" id="exp-bits" min="2" max="15" value="8"></label>
+    <label>Mantissa bits: <input type="number" id="man-bits" min="1" max="112" value="23"></label>
+    <span class="info" id="total-bits-label"></span>
+  </div>
+</section>
+
+<section>
+  <h2>Encode Value</h2>
+  <div class="row">
+    <input type="text" id="value-input" placeholder="e.g. 3.14, -0.1, 1.5e-3, inf, nan" value="3.14">
+    <button class="primary" id="encode-btn">Encode</button>
+  </div>
+  <p class="info">Decimal, scientific notation, or special values (inf, nan, -0)</p>
+</section>
+
+<section>
+  <h2>Binary Representation <span style="font-weight:normal;font-size:.8rem;color:var(--muted)">(click bits to toggle)</span></h2>
+  <div class="legend">
+    <span><span class="legend-swatch" style="background:var(--sign-color)"></span> Sign</span>
+    <span><span class="legend-swatch" style="background:var(--exp-color)"></span> Exponent</span>
+    <span><span class="legend-swatch" style="background:var(--man-color)"></span> Mantissa</span>
+  </div>
+  <div id="bit-indices"></div>
+  <div id="bit-container"></div>
+  <div id="bit-hex" class="info" style="font-family:monospace;margin-top:.4rem"></div>
+</section>
+
+<section>
+  <h2>Decoded Value</h2>
+  <dl class="details" id="details"></dl>
+  <div class="formula" id="formula"></div>
+  <div id="native-cmp"></div>
+</section>
+
+<section>
+  <h2>Arithmetic</h2>
+  <div class="row">
+    <input type="text" id="calc-a" placeholder="A" value="0.1">
+    <select id="calc-op">
+      <option value="add">+</option>
+      <option value="sub">&minus;</option>
+      <option value="mul">&times;</option>
+      <option value="div">&divide;</option>
+    </select>
+    <input type="text" id="calc-b" placeholder="B" value="0.2">
+    <button class="primary" id="calc-btn">Compute</button>
+  </div>
+  <div class="calc-result" id="calc-result"></div>
+</section>
+
+<script>
+"use strict";
+
+class FloatingPoint {
+  constructor(mantissaBits, exponentBits) {
+    this.mantissaBits = mantissaBits;
+    this.exponentBits = exponentBits;
+    this.bias = (1 << (exponentBits - 1)) - 1;
+    this.maxBiasedExp = (1 << exponentBits) - 1;
+    this.sign = 0;
+    this.exponent = 0;
+    this.mantissa = 0n;
+  }
+
+  clone() {
+    const fp = new FloatingPoint(this.mantissaBits, this.exponentBits);
+    fp.sign = this.sign;
+    fp.exponent = this.exponent;
+    fp.mantissa = this.mantissa;
+    return fp;
+  }
+
+  get isZero()      { return this.exponent === 0 && this.mantissa === 0n; }
+  get isSubnormal() { return this.exponent === 0 && this.mantissa !== 0n; }
+  get isNormal()    { return this.exponent > 0 && this.exponent < this.maxBiasedExp; }
+  get isInfinity()  { return this.exponent === this.maxBiasedExp && this.mantissa === 0n; }
+  get isNaN()       { return this.exponent === this.maxBiasedExp && this.mantissa !== 0n; }
+
+  get unbiasedExponent() {
+    if (this.exponent === 0) return 1 - this.bias;
+    return this.exponent - this.bias;
+  }
+
+  get category() {
+    if (this.isNaN) return 'NaN';
+    if (this.isInfinity) return 'Infinity';
+    if (this.isZero) return 'Zero';
+    if (this.isSubnormal) return 'Subnormal';
+    return 'Normal';
+  }
+
+  // ---- Encoding from integer ----
+  fromInteger(value) {
+    this.sign = 0; this.exponent = 0; this.mantissa = 0n;
+    let n = BigInt(value);
+    if (n === 0n) return this;
+    if (n < 0n) { this.sign = 1; n = -n; }
+    return this._encodePositive(n, 1n);
+  }
+
+  // ---- Encoding from decimal string ----
+  fromString(str) {
+    str = str.trim();
+    this.sign = 0; this.exponent = 0; this.mantissa = 0n;
+    if (!str) return this;
+
+    if (str[0] === '-') { this.sign = 1; str = str.slice(1); }
+    else if (str[0] === '+') str = str.slice(1);
+
+    const lower = str.toLowerCase();
+    if (lower === 'inf' || lower === 'infinity') {
+      this.exponent = this.maxBiasedExp; return this;
+    }
+    if (lower === 'nan') {
+      this.exponent = this.maxBiasedExp;
+      this.mantissa = 1n << BigInt(this.mantissaBits - 1);
+      return this;
+    }
+
+    // Scientific notation
+    let decExp = 0;
+    const eIdx = str.search(/[eE]/);
+    if (eIdx !== -1) { decExp = parseInt(str.slice(eIdx + 1), 10) || 0; str = str.slice(0, eIdx); }
+
+    const dotIdx = str.indexOf('.');
+    let intStr = '0', fracStr = '';
+    if (dotIdx === -1) { intStr = str || '0'; }
+    else { intStr = str.slice(0, dotIdx) || '0'; fracStr = str.slice(dotIdx + 1); }
+
+    // Build rational num / den
+    const fracLen = fracStr.length;
+    let num = BigInt(intStr) * 10n ** BigInt(fracLen) + (fracLen > 0 ? BigInt(fracStr) : 0n);
+    let den = 10n ** BigInt(fracLen);
+    if (decExp > 0) num *= 10n ** BigInt(decExp);
+    else if (decExp < 0) den *= 10n ** BigInt(-decExp);
+
+    if (num === 0n) return this; // preserves sign for -0
+    return this._encodePositive(num, den);
+  }
+
+  // ---- Core encoder: positive rational num/den -> sign/exponent/mantissa ----
+  _encodePositive(num, den) {
+    const mBits = BigInt(this.mantissaBits);
+
+    // Find binary exponent = floor(log2(num/den))
+    let binaryExp = 0;
+    if (num >= den) {
+      let t = den;
+      while (t * 2n <= num) { t *= 2n; binaryExp++; }
+    } else {
+      binaryExp = -1;
+      let t = num * 2n;
+      while (t < den) { t *= 2n; binaryExp--; }
+    }
+
+    // Subnormal range
+    const minNormalExp = 1 - this.bias;
+    if (binaryExp < minNormalExp) {
+      // mantissa_field = (num/den) * 2^(bias - 1 + mantissaBits)
+      const subShift = BigInt(this.bias - 1) + mBits;
+      const sNum = subShift >= 0n ? num << subShift : num;
+      const sDen = subShift >= 0n ? den : den << (-subShift);
+      let subM = sNum / sDen;
+      const subR = sNum % sDen;
+      if (subR * 2n > sDen || (subR * 2n === sDen && (subM & 1n) === 1n)) subM++;
+      if (subM >= (1n << mBits)) { this.exponent = 1; this.mantissa = 0n; return this; }
+      this.exponent = 0;
+      this.mantissa = subM;
+      return this;
+    }
+
+    // Normal: mantissaFull = (num / den) / 2^binaryExp * 2^mantissaBits
+    //       = num * 2^(mantissaBits - binaryExp) / den
+    const shift = mBits - BigInt(binaryExp);
+    const sNum = shift >= 0n ? num << shift : num;
+    const sDen = shift >= 0n ? den : den << (-shift);
+    let mFull = sNum / sDen;
+    const rem = sNum % sDen;
+    // Round to nearest even
+    if (rem * 2n > sDen || (rem * 2n === sDen && (mFull & 1n) === 1n)) mFull++;
+    // Rounding overflow
+    if (mFull >= (1n << (mBits + 1n))) { mFull >>= 1n; binaryExp++; }
+
+    const biasedExp = binaryExp + this.bias;
+    if (biasedExp >= this.maxBiasedExp) {
+      this.exponent = this.maxBiasedExp; this.mantissa = 0n; return this;
+    }
+    this.exponent = biasedExp;
+    this.mantissa = mFull - (1n << mBits);
+    return this;
+  }
+
+  // ---- Decode to exact rational [num, den] ----
+  toRational() {
+    if (this.isNaN || this.isInfinity) return null;
+    if (this.isZero) return [0n, 1n];
+    const mBits = BigInt(this.mantissaBits);
+    let sig, exp;
+    if (this.isSubnormal) {
+      sig = this.mantissa;
+      exp = 1n - BigInt(this.bias) - mBits;
+    } else {
+      sig = (1n << mBits) | this.mantissa;
+      exp = BigInt(this.exponent - this.bias) - mBits;
+    }
+    let n, d;
+    if (exp >= 0n) { n = sig << exp; d = 1n; }
+    else { n = sig; d = 1n << (-exp); }
+    if (this.sign) n = -n;
+    return [n, d];
+  }
+
+  // ---- Decode to decimal string ----
+  toDecimalString(maxFrac = 60) {
+    if (this.isNaN) return 'NaN';
+    const s = this.sign ? '-' : '';
+    if (this.isInfinity) return s + 'Infinity';
+    if (this.isZero) return s + '0';
+    const rat = this.toRational();
+    let num = rat[0] < 0n ? -rat[0] : rat[0];
+    const den = rat[1];
+    const intPart = num / den;
+    let rem = num % den;
+    if (rem === 0n) return s + intPart.toString();
+    const digits = [];
+    for (let i = 0; i < maxFrac && rem !== 0n; i++) {
+      rem *= 10n;
+      digits.push((rem / den).toString());
+      rem %= den;
+    }
+    let r = s + intPart.toString() + '.' + digits.join('');
+    if (rem !== 0n) r += '...';
+    return r;
+  }
+
+  // ---- Formula string ----
+  toFormulaString() {
+    if (this.isNaN) return 'NaN: exponent all 1s, mantissa \u2260 0';
+    const sg = this.sign ? '-1' : '+1';
+    if (this.isInfinity) return sg + ' \u00d7 \u221e: exponent all 1s, mantissa = 0';
+    if (this.isZero) return sg + ' \u00d7 0: exponent = 0, mantissa = 0';
+    const p = this.mantissaBits;
+    const pow2p = 1n << BigInt(p);
+    const mVal = this.mantissa;
+    if (this.isSubnormal) {
+      const eVal = 1 - this.bias;
+      return sg + ' \u00d7 2^(' + eVal + ') \u00d7 (0 + ' + mVal + '/' + pow2p + ')\n= '
+           + sg + ' \u00d7 2^(' + eVal + ') \u00d7 ' + mVal + '/' + pow2p;
+    }
+    const e = this.exponent, eu = e - this.bias;
+    return sg + ' \u00d7 2^(' + e + ' \u2212 ' + this.bias + ') \u00d7 (1 + ' + mVal + '/' + pow2p + ')\n= '
+         + sg + ' \u00d7 2^(' + eu + ') \u00d7 (' + pow2p + ' + ' + mVal + ')/' + pow2p;
+  }
+
+  // ---- Binary / Hex strings ----
+  toBinaryString() {
+    return this.sign.toString() + ' '
+      + this.exponent.toString(2).padStart(this.exponentBits, '0') + ' '
+      + this.mantissa.toString(2).padStart(this.mantissaBits, '0');
+  }
+
+  toHexString() {
+    const total = 1 + this.exponentBits + this.mantissaBits;
+    const val = (BigInt(this.sign) << BigInt(this.exponentBits + this.mantissaBits))
+              | (BigInt(this.exponent) << BigInt(this.mantissaBits))
+              | this.mantissa;
+    return '0x' + val.toString(16).toUpperCase().padStart(Math.ceil(total / 4), '0');
+  }
+
+  // ---- Bit array for UI ----
+  toBitArray() {
+    const bits = [];
+    bits.push({ value: this.sign, role: 'sign' });
+    const es = this.exponent.toString(2).padStart(this.exponentBits, '0');
+    for (const c of es) bits.push({ value: +c, role: 'exponent' });
+    const ms = this.mantissa.toString(2).padStart(this.mantissaBits, '0');
+    for (const c of ms) bits.push({ value: +c, role: 'mantissa' });
+    return bits;
+  }
+
+  fromBitArray(bits) {
+    this.sign = bits[0];
+    let ev = 0;
+    for (let i = 1; i <= this.exponentBits; i++) ev = (ev << 1) | bits[i];
+    this.exponent = ev;
+    let mv = 0n;
+    for (let i = 1 + this.exponentBits; i < bits.length; i++) mv = (mv << 1n) | BigInt(bits[i]);
+    this.mantissa = mv;
+    return this;
+  }
+
+  toggleBit(index) {
+    const bits = this.toBitArray().map(b => b.value);
+    bits[index] ^= 1;
+    return this.fromBitArray(bits);
+  }
+
+  // ---- Arithmetic via exact rational, then re-encode ----
+  static _operate(a, b, op) {
+    const res = new FloatingPoint(a.mantissaBits, a.exponentBits);
+    // NaN propagation
+    if (a.isNaN || b.isNaN) {
+      res.exponent = res.maxBiasedExp;
+      res.mantissa = 1n << BigInt(res.mantissaBits - 1);
+      return res;
+    }
+    const aInf = a.isInfinity, bInf = b.isInfinity;
+    const aZero = a.isZero, bZero = b.isZero;
+
+    if (op === 'add' || op === 'sub') {
+      let bSign = b.sign;
+      if (op === 'sub') bSign ^= 1;
+      // inf + inf / inf - inf
+      if (aInf && bInf) {
+        if (a.sign === bSign) { res.sign = a.sign; res.exponent = res.maxBiasedExp; return res; }
+        res.exponent = res.maxBiasedExp; res.mantissa = 1n << BigInt(res.mantissaBits - 1); return res;
+      }
+      if (aInf) { res.sign = a.sign; res.exponent = res.maxBiasedExp; return res; }
+      if (bInf) { res.sign = bSign; res.exponent = res.maxBiasedExp; return res; }
+      const ra = a.toRational(), rb = b.toRational();
+      let rn = ra[0] * rb[1] + (bSign ? -1n : 1n) * (a.sign ? -1n : 1n) !== 0n ? 0n : 0n;
+      // Simpler: reconstruct signed rationals
+      let an = ra[0], ad = ra[1], bn = rb[0], bd = rb[1];
+      if (a.sign) an = -an;
+      if (bSign) bn = -bn;
+      let num = an * bd + bn * ad;
+      let den = ad * bd;
+      if (num === 0n) return res;
+      if (num < 0n) { res.sign = 1; num = -num; } else { res.sign = 0; }
+      return res._encodePositive(num, den);
+    }
+
+    if (op === 'mul') {
+      // inf * 0 = NaN
+      if ((aInf && bZero) || (bInf && aZero)) {
+        res.exponent = res.maxBiasedExp; res.mantissa = 1n << BigInt(res.mantissaBits - 1); return res;
+      }
+      if (aInf || bInf) {
+        res.sign = a.sign ^ b.sign; res.exponent = res.maxBiasedExp; return res;
+      }
+      if (aZero || bZero) { res.sign = a.sign ^ b.sign; return res; }
+      const ra = a.toRational(), rb = b.toRational();
+      let num = ra[0] * rb[0];
+      let den = ra[1] * rb[1];
+      if (a.sign ^ b.sign) { res.sign = 1; if (num < 0n) num = -num; }
+      else { res.sign = 0; if (num < 0n) num = -num; }
+      if (num === 0n) return res;
+      return res._encodePositive(num, den);
+    }
+
+    if (op === 'div') {
+      // inf / inf = NaN, 0 / 0 = NaN
+      if ((aInf && bInf) || (aZero && bZero)) {
+        res.exponent = res.maxBiasedExp; res.mantissa = 1n << BigInt(res.mantissaBits - 1); return res;
+      }
+      // x / 0 = inf
+      if (bZero) { res.sign = a.sign ^ b.sign; res.exponent = res.maxBiasedExp; return res; }
+      // x / inf = 0
+      if (bInf) { res.sign = a.sign ^ b.sign; return res; }
+      if (aInf) { res.sign = a.sign ^ b.sign; res.exponent = res.maxBiasedExp; return res; }
+      if (aZero) { res.sign = a.sign ^ b.sign; return res; }
+      const ra = a.toRational(), rb = b.toRational();
+      let num = ra[0] * rb[1];
+      let den = ra[1] * rb[0];
+      if (den < 0n) { num = -num; den = -den; }
+      res.sign = a.sign ^ b.sign;
+      if (num < 0n) num = -num;
+      return res._encodePositive(num, den);
+    }
+
+    return res;
+  }
+
+  add(other) { return FloatingPoint._operate(this, other, 'add'); }
+  sub(other) { return FloatingPoint._operate(this, other, 'sub'); }
+  mul(other) { return FloatingPoint._operate(this, other, 'mul'); }
+  div(other) { return FloatingPoint._operate(this, other, 'div'); }
+}
+
+// ================= UI =================
+
+const PRESETS = [
+  { name: 'IEEE 754 Half (16-bit)', exp: 5, man: 10 },
+  { name: 'BFloat16', exp: 8, man: 7 },
+  { name: 'IEEE 754 Single (32-bit)', exp: 8, man: 23 },
+  { name: 'IEEE 754 Double (64-bit)', exp: 11, man: 52 },
+];
+
+let currentFP = new FloatingPoint(23, 8);
+let activePreset = 2;
+
+const $ = id => document.getElementById(id);
+
+function buildPresets() {
+  const el = $('presets');
+  el.innerHTML = '';
+  PRESETS.forEach((p, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'preset-btn' + (i === activePreset ? ' active' : '');
+    btn.textContent = p.name;
+    btn.onclick = () => {
+      activePreset = i;
+      $('exp-bits').value = p.exp;
+      $('man-bits').value = p.man;
+      rebuildFormat();
+    };
+    el.appendChild(btn);
+  });
+}
+
+function rebuildFormat() {
+  const expB = parseInt($('exp-bits').value) || 8;
+  const manB = parseInt($('man-bits').value) || 23;
+  $('total-bits-label').textContent = 'Total: ' + (1 + expB + manB) + ' bits (1 sign + ' + expB + ' exp + ' + manB + ' mantissa)';
+  // Check if matches a preset
+  activePreset = PRESETS.findIndex(p => p.exp === expB && p.man === manB);
+  buildPresets();
+  currentFP = new FloatingPoint(manB, expB);
+  encode();
+}
+
+function encode() {
+  const str = $('value-input').value.trim();
+  currentFP.fromString(str);
+  renderBits();
+  renderDetails();
+}
+
+function renderBits() {
+  const bits = currentFP.toBitArray();
+  const container = $('bit-container');
+  const indices = $('bit-indices');
+  container.innerHTML = '';
+  indices.innerHTML = '';
+  const total = bits.length;
+
+  bits.forEach((b, i) => {
+    if (i === 1 || i === 1 + currentFP.exponentBits) {
+      const sep = document.createElement('span');
+      sep.className = 'bit-sep';
+      container.appendChild(sep);
+      const isep = document.createElement('span');
+      isep.className = 'bit-idx-sep';
+      indices.appendChild(isep);
+    }
+    const idx = document.createElement('span');
+    idx.className = 'bit-idx';
+    idx.textContent = (total - 1 - i).toString();
+    indices.appendChild(idx);
+
+    const el = document.createElement('span');
+    el.className = 'bit ' + b.role;
+    el.textContent = b.value;
+    el.title = b.role + ' bit ' + (total - 1 - i);
+    el.onclick = () => { currentFP.toggleBit(i); renderBits(); renderDetails(); };
+    container.appendChild(el);
+  });
+
+  $('bit-hex').textContent = currentFP.toBinaryString() + '  |  ' + currentFP.toHexString();
+}
+
+function renderDetails() {
+  const dl = $('details');
+  const cat = currentFP.category;
+  const items = [
+    ['Category', '<span class="cat-badge cat-' + cat + '">' + cat + '</span>'],
+    ['Decimal', esc(currentFP.toDecimalString())],
+    ['Sign', currentFP.sign ? '1 (negative)' : '0 (positive)'],
+    ['Biased exponent', currentFP.exponent + ' (binary: ' + currentFP.exponent.toString(2).padStart(currentFP.exponentBits, '0') + ')'],
+    ['Unbiased exponent', currentFP.unbiasedExponent.toString()],
+    ['Bias', currentFP.bias.toString()],
+    ['Mantissa', currentFP.mantissa.toString() + ' (binary: ' + currentFP.mantissa.toString(2).padStart(currentFP.mantissaBits, '0') + ')'],
+    ['Hex', currentFP.toHexString()],
+  ];
+  dl.innerHTML = items.map(([k, v]) => '<dt>' + k + '</dt><dd>' + v + '</dd>').join('');
+  $('formula').textContent = currentFP.toFormulaString();
+
+  // Native comparison for standard formats
+  const cmp = $('native-cmp');
+  cmp.innerHTML = '';
+  const expB = currentFP.exponentBits, manB = currentFP.mantissaBits;
+  if ((expB === 8 && manB === 23) || (expB === 11 && manB === 52)) {
+    const valStr = $('value-input').value.trim();
+    const jsVal = parseFloat(valStr);
+    if (!isNaN(jsVal) || valStr.toLowerCase().includes('nan')) {
+      let nativeHex;
+      if (expB === 8 && manB === 23) {
+        const buf = new ArrayBuffer(4);
+        new DataView(buf).setFloat32(0, jsVal, false);
+        nativeHex = '0x' + new DataView(buf).getUint32(0, false).toString(16).toUpperCase().padStart(8, '0');
+      } else {
+        const buf = new ArrayBuffer(8);
+        new DataView(buf).setFloat64(0, jsVal, false);
+        const hi = new DataView(buf).getUint32(0, false);
+        const lo = new DataView(buf).getUint32(4, false);
+        nativeHex = '0x' + ((BigInt(hi) << 32n) | BigInt(lo)).toString(16).toUpperCase().padStart(16, '0');
+      }
+      const simHex = currentFP.toHexString();
+      const match = nativeHex === simHex;
+      cmp.innerHTML = '<div class="native-cmp">Native JS (' + (expB === 8 ? 'float32' : 'float64')
+        + '): ' + nativeHex + ' <span class="' + (match ? 'match' : 'mismatch') + '">'
+        + (match ? '\u2714 match' : '\u2718 mismatch: simulator=' + simHex) + '</span></div>';
+    }
+  }
+}
+
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// Arithmetic
+function compute() {
+  const aStr = $('calc-a').value.trim();
+  const bStr = $('calc-b').value.trim();
+  const op = $('calc-op').value;
+  const a = new FloatingPoint(currentFP.mantissaBits, currentFP.exponentBits).fromString(aStr);
+  const b = new FloatingPoint(currentFP.mantissaBits, currentFP.exponentBits).fromString(bStr);
+  const r = a[op](b);
+  const opSymbol = { add: '+', sub: '\u2212', mul: '\u00d7', div: '\u00f7' }[op];
+
+  const lines = [
+    'A = ' + a.toDecimalString() + '  [' + a.toHexString() + ']  ' + a.toBinaryString(),
+    'B = ' + b.toDecimalString() + '  [' + b.toHexString() + ']  ' + b.toBinaryString(),
+    '',
+    'A ' + opSymbol + ' B = ' + r.toDecimalString() + '  [' + r.toHexString() + ']  ' + r.toBinaryString(),
+    'Category: ' + r.category,
+  ];
+
+  // Show rounding error for common examples
+  const ra = a.toRational(), rb = b.toRational(), rr = r.toRational();
+  if (ra && rb && rr) {
+    let exactNum, exactDen;
+    if (op === 'add') { exactNum = ra[0] * rb[1] + rb[0] * ra[1]; exactDen = ra[1] * rb[1]; }
+    else if (op === 'sub') { exactNum = ra[0] * rb[1] - rb[0] * ra[1]; exactDen = ra[1] * rb[1]; }
+    else if (op === 'mul') { exactNum = ra[0] * rb[0]; exactDen = ra[1] * rb[1]; }
+    else { exactNum = ra[0] * rb[1]; exactDen = ra[1] * rb[0]; if (exactDen < 0n) { exactNum = -exactNum; exactDen = -exactDen; } }
+    // Check if result matches exact
+    const resultNum = rr[0], resultDen = rr[1];
+    if (exactNum * resultDen !== resultNum * exactDen) {
+      lines.push('');
+      lines.push('\u26a0 Rounding occurred: result is not exact');
+    }
+  }
+
+  $('calc-result').textContent = lines.join('\n');
+}
+
+// Event bindings
+$('encode-btn').onclick = encode;
+$('value-input').onkeydown = e => { if (e.key === 'Enter') encode(); };
+$('exp-bits').onchange = rebuildFormat;
+$('man-bits').onchange = rebuildFormat;
+$('calc-btn').onclick = compute;
+
+// Init
+buildPresets();
+rebuildFormat();
+</script>
+</body>
+</html>
