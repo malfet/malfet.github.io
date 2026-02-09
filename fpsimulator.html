@@ -500,6 +500,8 @@ class FloatingPoint {
 // ================= UI =================
 
 const PRESETS = [
+  { name: 'FP8 E4M3', exp: 4, man: 3 },
+  { name: 'FP8 E5M2', exp: 5, man: 2 },
   { name: 'IEEE 754 Half (16-bit)', exp: 5, man: 10 },
   { name: 'BFloat16', exp: 8, man: 7 },
   { name: 'IEEE 754 Single (32-bit)', exp: 8, man: 23 },
@@ -507,7 +509,7 @@ const PRESETS = [
 ];
 
 let currentFP = new FloatingPoint(23, 8);
-let activePreset = 2;
+let activePreset = 4;
 
 const $ = id => document.getElementById(id);
 
