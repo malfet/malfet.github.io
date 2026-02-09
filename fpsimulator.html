@@ -51,11 +51,6 @@ input[type="text"] {
   border-radius: 4px; background: var(--input-bg); color: var(--fg); font-size: 1rem;
   font-family: 'SF Mono', Consolas, monospace;
 }
-button.primary {
-  padding: .45rem 1rem; border: 1px solid var(--btn-active); border-radius: 4px;
-  background: var(--btn-active); color: var(--btn-active-text); cursor: pointer;
-  font-size: .9rem; font-weight: 600;
-}
 .info { font-size: .8rem; color: var(--muted); margin-top: .4rem; }
 
 /* Bit display */
@@ -120,7 +115,6 @@ select { padding: .4rem; border: 1px solid var(--border); border-radius: 4px;
   <h2>Encode Value</h2>
   <div class="row">
     <input type="text" id="value-input" placeholder="e.g. 3.14, -0.1, 1.5e-3, inf, nan" value="3.14">
-    <button class="primary" id="encode-btn">Encode</button>
   </div>
   <p class="info">Decimal, scientific notation, or special values (inf, nan, -0)</p>
 </section>
@@ -155,7 +149,6 @@ select { padding: .4rem; border: 1px solid var(--border); border-radius: 4px;
       <option value="div">&divide;</option>
     </select>
     <input type="text" id="calc-b" placeholder="B" value="0.2">
-    <button class="primary" id="calc-btn">Compute</button>
   </div>
   <div class="calc-result" id="calc-result"></div>
 </section>
@@ -373,10 +366,7 @@ class FloatingPoint {
 
   toHexString() {
     const total = 1 + this.exponentBits + this.mantissaBits;
-    const val = (BigInt(this.sign) << BigInt(this.exponentBits + this.mantissaBits))
-              | (BigInt(this.exponent) << BigInt(this.mantissaBits))
-              | this.mantissa;
-    return '0x' + val.toString(16).toUpperCase().padStart(Math.ceil(total / 4), '0');
+    return '0x' + this.toBitInteger().toString(16).toUpperCase().padStart(Math.ceil(total / 4), '0');
   }
 
   // ---- Bit array for UI ----
@@ -405,6 +395,24 @@ class FloatingPoint {
     const bits = this.toBitArray().map(b => b.value);
     bits[index] ^= 1;
     return this.fromBitArray(bits);
+  }
+
+  // ---- Bit pattern as integer ----
+  toBitInteger() {
+    return (BigInt(this.sign) << BigInt(this.exponentBits + this.mantissaBits))
+         | (BigInt(this.exponent) << BigInt(this.mantissaBits))
+         | this.mantissa;
+  }
+
+  static fromBitInteger(mantissaBits, exponentBits, bits) {
+    const fp = new FloatingPoint(mantissaBits, exponentBits);
+    const manMask = (1n << BigInt(mantissaBits)) - 1n;
+    fp.mantissa = bits & manMask;
+    bits >>= BigInt(mantissaBits);
+    fp.exponent = Number(bits & ((1n << BigInt(exponentBits)) - 1n));
+    bits >>= BigInt(exponentBits);
+    fp.sign = Number(bits & 1n);
+    return fp;
   }
 
   // ---- Arithmetic via exact rational, then re-encode ----
@@ -529,13 +537,17 @@ function rebuildFormat() {
   buildPresets();
   currentFP = new FloatingPoint(manB, expB);
   encode();
+  // Re-run arithmetic if there's a previous result
+  if ($('calc-result').textContent) compute();
 }
 
 function encode() {
-  const str = $('value-input').value.trim();
-  currentFP.fromString(str);
-  renderBits();
-  renderDetails();
+  try {
+    const str = $('value-input').value.trim();
+    currentFP.fromString(str);
+    renderBits();
+    renderDetails();
+  } catch (e) { /* ignore parse errors while typing */ }
 }
 
 function renderBits() {
@@ -578,12 +590,40 @@ function renderDetails() {
     ['Category', '<span class="cat-badge cat-' + cat + '">' + cat + '</span>'],
     ['Decimal', esc(currentFP.toDecimalString())],
     ['Sign', currentFP.sign ? '1 (negative)' : '0 (positive)'],
-    ['Biased exponent', currentFP.exponent + ' (binary: ' + currentFP.exponent.toString(2).padStart(currentFP.exponentBits, '0') + ')'],
-    ['Unbiased exponent', currentFP.unbiasedExponent.toString()],
-    ['Bias', currentFP.bias.toString()],
+    ['Exponent', currentFP.unbiasedExponent + ' (biased: ' + currentFP.exponent + ', bias: ' + currentFP.bias + ', binary: ' + currentFP.exponent.toString(2).padStart(currentFP.exponentBits, '0') + ')'],
     ['Mantissa', currentFP.mantissa.toString() + ' (binary: ' + currentFP.mantissa.toString(2).padStart(currentFP.mantissaBits, '0') + ')'],
     ['Hex', currentFP.toHexString()],
   ];
+
+  // ULP: difference between current and neighbor (±1 on bit pattern)
+  if (!currentFP.isNaN && !currentFP.isInfinity) {
+    const bits = currentFP.toBitInteger();
+    const maxBits = (1n << BigInt(1 + currentFP.exponentBits + currentFP.mantissaBits)) - 1n;
+    const rat = currentFP.toRational();
+    if (rat) {
+      let neighborBits = bits < maxBits ? bits + 1n : bits - 1n;
+      const neighbor = FloatingPoint.fromBitInteger(currentFP.mantissaBits, currentFP.exponentBits, neighborBits);
+      const nRat = neighbor.toRational();
+      if (nRat) {
+        // |neighbor - current| = |nRat[0]*rat[1] - rat[0]*nRat[1]| / (rat[1]*nRat[1])
+        let diffNum = nRat[0] * rat[1] - rat[0] * nRat[1];
+        if (diffNum < 0n) diffNum = -diffNum;
+        const diffDen = rat[1] * nRat[1];
+        // Convert to decimal string
+        const intP = diffNum / diffDen;
+        let rem = diffNum % diffDen;
+        let ulpStr = intP.toString();
+        if (rem !== 0n) {
+          const digs = [];
+          for (let i = 0; i < 20 && rem !== 0n; i++) { rem *= 10n; digs.push((rem / diffDen).toString()); rem %= diffDen; }
+          ulpStr += '.' + digs.join('');
+          if (rem !== 0n) ulpStr += '...';
+        }
+        items.push(['Precision (ULP)', ulpStr]);
+      }
+    }
+  }
+
   dl.innerHTML = items.map(([k, v]) => '<dt>' + k + '</dt><dd>' + v + '</dd>').join('');
   $('formula').textContent = currentFP.toFormulaString();
 
@@ -618,8 +658,14 @@ function renderDetails() {
 
 function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+function formatName() {
+  const p = PRESETS.find(p => p.exp === currentFP.exponentBits && p.man === currentFP.mantissaBits);
+  return p ? p.name : 'Custom (' + currentFP.exponentBits + 'e+' + currentFP.mantissaBits + 'm)';
+}
+
 // Arithmetic
-function compute() {
+function compute() { try { _compute(); } catch(e) { /* ignore parse errors while typing */ } }
+function _compute() {
   const aStr = $('calc-a').value.trim();
   const bStr = $('calc-b').value.trim();
   const op = $('calc-op').value;
@@ -628,7 +674,10 @@ function compute() {
   const r = a[op](b);
   const opSymbol = { add: '+', sub: '\u2212', mul: '\u00d7', div: '\u00f7' }[op];
 
+  const fmtName = formatName();
   const lines = [
+    'Format: ' + fmtName + ' (1+' + currentFP.exponentBits + '+' + currentFP.mantissaBits + ' = ' + (1 + currentFP.exponentBits + currentFP.mantissaBits) + ' bits)',
+    '',
     'A = ' + a.toDecimalString() + '  [' + a.toHexString() + ']  ' + a.toBinaryString(),
     'B = ' + b.toDecimalString() + '  [' + b.toHexString() + ']  ' + b.toBinaryString(),
     '',
@@ -655,16 +704,18 @@ function compute() {
   $('calc-result').textContent = lines.join('\n');
 }
 
-// Event bindings
-$('encode-btn').onclick = encode;
-$('value-input').onkeydown = e => { if (e.key === 'Enter') encode(); };
-$('exp-bits').onchange = rebuildFormat;
-$('man-bits').onchange = rebuildFormat;
-$('calc-btn').onclick = compute;
+// Event bindings — live updates on every keystroke / change
+$('value-input').oninput = encode;
+$('exp-bits').oninput = rebuildFormat;
+$('man-bits').oninput = rebuildFormat;
+$('calc-a').oninput = compute;
+$('calc-b').oninput = compute;
+$('calc-op').onchange = compute;
 
 // Init
 buildPresets();
 rebuildFormat();
+compute();
 </script>
 </body>
 </html>
