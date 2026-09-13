@@ -403,6 +403,7 @@ class RayTracerScene {
     this.ctx = ctx;
     this.aspect = canvas.clientWidth/canvas.clientHeight;
     this.defaultCameraDistance = this.aspect > 1.0 ? -1.4 : -5.0;
+    this.renderPending = false;
 
     this.setCamera(0, 0, this.defaultCameraDistance);
 
@@ -442,12 +443,25 @@ class RayTracerScene {
   animate(t) {
     this.setRotateAndScale(0, 1e-3*t, 7e-4*t, 0, 1.0);
     this.setRotateAndScale(1, 0, -1e-3*t, 0, 1.0);
-    this.render();
+    this.requestRender();
   }
 
   render(x0 = -1.0, y0 = -1.0, x1 = 1.0, y1 = 1.0) {
     this.ctx.draw2DArray(this.ctx.PRIMITIVES.TRIANGLE_STRIP, 'coord', [x0, y0, x1, y0, x0, y1, x1, y1]);
   }
+
+  // Coalesce pending render requests into one frame per display refresh
+  requestRender() {
+    if (this.renderPending) {
+      return;
+    }
+    this.renderPending = true;
+    window.requestAnimationFrame(() => {
+      this.renderPending = false;
+      this.render();
+    });
+  }
+
   setColor(i, r, g, b) {
     this.ctx.setUniformf('objects['+i+'].color', r, g, b);
   }
@@ -504,7 +518,7 @@ function registerMotionEventListener() {
     } else {
       scene.setCameraRotation(0, 0, 0);
     }
-    scene.render();
+    scene.requestRender();
   });
 }
 
@@ -540,12 +554,12 @@ function configureTracer() {
       xn = scene.aspect*(event.x/canvas.clientWidth - .5);
       yn = (event.y/canvas.clientHeight - .5);
       scene.setCamera(xn, yn, cameraDistance);
-      scene.render();
+      scene.requestRender();
     });
     canvas.addEventListener('wheel', function(event) {
       cameraDistance += 1e-3 * event.deltaY;
       scene.setCamera(xn, yn, cameraDistance);
-      scene.render();
+      scene.requestRender();
     });
     registerMotionEventListener();
     setTimeout(function() {
@@ -554,9 +568,16 @@ function configureTracer() {
       }
       displayClickToEnable();
     }, 1500);
-    setInterval(function() {
-       scene.animate(performance.now());
-    }, 100);
+    // Keep the original 10 fps pace, but let the display drive it
+    var lastAnimTime = 0;
+    const animationLoop = (t) => {
+      if (t - lastAnimTime >= 100) {
+        lastAnimTime = t;
+        scene.animate(t);
+      }
+      window.requestAnimationFrame(animationLoop);
+    };
+    window.requestAnimationFrame(animationLoop);
   } catch (e) {
     alert('Initialization failed: ' + e);
     return;
