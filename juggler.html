@@ -669,15 +669,18 @@ function registerMotionEventListener() {
     compOrientation.beta += event.rotationRate.beta*event.interval;
     compOrientation.gamma += event.rotationRate.gamma*event.interval;
 
-    // Accumulated rotation rates are already in degrees, same as the view angles
+    // Accumulated rotation rates are already in degrees, same as the view angles.
+    // raytracing.html feeds alpha to the pitch argument and beta to the yaw one;
+    // setObserver takes them the other way around (altitude first), and its
+    // altitude grows upwards where the pitch argument there grows downwards.
     const alpha = compOrientation.alpha;
     const beta = compOrientation.beta;
     if (window.orientation == 0.0) {
-      scene.setObserver(OBSERVER, VIEW_ALT + beta, VIEW_AZ + alpha, FOCAL_SCALE);
+      scene.setObserver(OBSERVER, VIEW_ALT - alpha, VIEW_AZ + beta, FOCAL_SCALE);
     } else if (window.orientation == 90.0) {
-        scene.setObserver(OBSERVER, VIEW_ALT + alpha, VIEW_AZ + beta, FOCAL_SCALE);
+        scene.setObserver(OBSERVER, VIEW_ALT - beta, VIEW_AZ + alpha, FOCAL_SCALE);
     } else if (window.orientation == -90.0) {
-        scene.setObserver(OBSERVER, VIEW_ALT - alpha, VIEW_AZ - beta, FOCAL_SCALE);
+        scene.setObserver(OBSERVER, VIEW_ALT + beta, VIEW_AZ - alpha, FOCAL_SCALE);
     } else {
       scene.setObserver(OBSERVER, VIEW_ALT, VIEW_AZ, FOCAL_SCALE);
     }
