@@ -251,6 +251,8 @@ class GLContext {
     const ctx = canvas.getContext('webgl');
     if (ctx == null)
       throw 'Can not get WebGL context...';
+    if (ctx.isContextLost())
+      throw 'WebGL context is lost, try restarting the browser';
     ctx.viewport(0, 0, canvas.clientWidth, canvas.clientHeight);
     ctx.clearColor(0, 0, 0, 1.0);
     ctx.clear(ctx.COLOR_BUFFER_BIT);
