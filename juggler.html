@@ -380,6 +380,7 @@ class RayTracerScene {
     this.ctx = ctx;
     this.aspect = canvas.clientWidth/canvas.clientHeight;
     this.objIdx = 0;
+    this.renderPending = false;
 
     //this.setCamera(0, 2.5, -10);
     this.setCamera(-4, 5.5, -10);
@@ -470,6 +471,18 @@ class RayTracerScene {
     this.ctx.draw2DArray(this.ctx.PRIMITIVES.TRIANGLE_STRIP, 'coord', [x0, y0, x1, y0, x0, y1, x1, y1]);
   }
 
+  // Coalesce pending render requests into one frame per display refresh
+  requestRender() {
+    if (this.renderPending) {
+      return;
+    }
+    this.renderPending = true;
+    window.requestAnimationFrame(() => {
+      this.renderPending = false;
+      this.render();
+    });
+  }
+
   setColor(i,r,g,b,w=0.0) {
     this.ctx.setUniformf('objects['+i+'].color_type',r,g,b,w);
   }
@@ -525,7 +538,7 @@ function registerMotionEventListener() {
     } else {
       scene.setCameraRotation(0, 0, 0);
     }
-    scene.render();
+    scene.requestRender();
   });
 }
 
@@ -584,7 +597,7 @@ function configureTracer() {
       scene.setCamera(-4.0 + xn, 5.5 + yn, -10);
       //scene.setCameraRotation(xn, yn,0);
 
-      scene.render();
+      scene.requestRender();
     });
     registerMotionEventListener();
     setTimeout(function() {
