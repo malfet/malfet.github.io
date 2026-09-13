@@ -19,6 +19,7 @@ varying vec2 pos;
 
 const float THRESHOLD = 1e-2;
 const int MAX_STEP = 200;
+const float MAX_DISTANCE = 100.0;
 
 struct PointLight {
   vec3 location;
@@ -137,19 +138,26 @@ void FillProps(in vec3 point, in float mat, out SurfaceProps props) {
 
 vec2 computeDistance(in Ray ray) {
   float distance = 2.0*THRESHOLD;
+  vec2 rc = vec2(0.0);
   for(int step = 0; step < MAX_STEP; ++step) {
-    vec2 rc= sdf(ray.origin + distance * ray.dir);
+    rc = sdf(ray.origin + distance * ray.dir);
     if (abs(rc.x) < THRESHOLD) {
       return vec2(distance, rc.y);
     }
+    if (distance > MAX_DISTANCE) {
+      return vec2(-1.0);
+    }
     distance += rc.x;
   }
-  return vec2(-1.0);
+  // Out of steps rather than out of scene, so the ray is creeping along a
+  // surface and reporting a miss here would punch a hole into the figure
+  return vec2(distance, rc.y);
 }
 
 
-bool Scene_Intersect(in Ray ray) {
-  return computeDistance(ray).x >= 0.0;
+bool Scene_Occluded(in Ray ray, in float maxDistance) {
+  float distance = computeDistance(ray).x;
+  return distance >= 0.0 && distance < maxDistance;
 }
 
 float Scene_Intersect(in Ray ray, out SurfaceProps props) {
@@ -172,11 +180,13 @@ void main(void) {
       break;
     }
     color += weight * props.ambient * props.color;
+    // Lift secondary rays off the surface, or it occludes and reflects itself
+    vec3 origin = props.point + 4.0*THRESHOLD*props.norm;
     for(int idx = 0; idx < numLights; ++idx) {
       vec3 lightDir = lights[idx].location - props.point;
-      Ray lightRay = Ray(props.point, normalize(lightDir));
-      // Check if light is occluded
-      if (Scene_Intersect(lightRay)) continue;
+      Ray lightRay = Ray(origin, normalize(lightDir));
+      // Check if light is occluded by something in front of it
+      if (Scene_Occluded(lightRay, length(lightDir))) continue;
       float attenuation = sqr(lights[idx].attenuation)/dot(lightDir, lightDir);
       float angle = max(dot(lightRay.dir, props.norm), 0.0);
       if (angle < THRESHOLD) continue;
@@ -196,7 +206,7 @@ void main(void) {
     float viewAngle = dot(ray.dir, props.norm);
     weight *= props.reflect;
     ray.dir -= props.norm * 2.0 * viewAngle;
-    ray.origin = props.point;
+    ray.origin = origin;
   }
 
   gl_FragColor = vec4(color, 1.0);
