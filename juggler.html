@@ -547,12 +547,36 @@ function displayClickToEnable() {
   document.getElementById('click-to-enable').style.visibility='visible';
 }
 
+// Draw calls are asynchronous, so read a pixel back to wait for the GPU to
+// actually finish rendering the frame
+function benchmarkSingleFrame(canvas, setupTime) {
+  const glCtx = scene.ctx.getGLContext();
+  const pixel = new Uint8Array(4);
+  const startTime = performance.now();
+  scene.render();
+  glCtx.readPixels(0, 0, 1, 1, glCtx.RGBA, glCtx.UNSIGNED_BYTE, pixel);
+  const renderTime = performance.now() - startTime;
+  const status = glCtx.isContextLost() ? 'context lost' : 'glGetError ' + glCtx.getError();
+  const msg = canvas.width + 'x' + canvas.height + ': setup ' + setupTime.toFixed(1)
+            + ' msec, single frame ' + renderTime.toFixed(1) + ' msec (' + status + ')';
+  console.log(msg);
+  document.getElementById('benchmark-result').textContent = msg;
+}
+
 function configureTracer() {
+  const runBenchmark = window.location.search.indexOf('benchmark') >= 0;
   const canvas = document.getElementById('canvas');
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
+  if (!runBenchmark) {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
   try {
+    const startTime = performance.now();
     scene = new RayTracerScene(canvas);
+    if (runBenchmark) {
+      // Render once and stop, no event handlers to re-render the scene
+      return benchmarkSingleFrame(canvas, performance.now() - startTime);
+    }
     scene.render();
     canvas.addEventListener('mousemove', function(event) {
       var xn = scene.aspect*(event.x/canvas.clientWidth - .5);
@@ -581,6 +605,7 @@ function configureTracer() {
 <body onLoad="configureTracer();">
 <DIV>
   <H1 style="display:inline">RayTracer as fragment shader</H1>
+  <SPAN id="benchmark-result"></SPAN>
   <DIV style="display:inline;visibility:hidden" id="click-to-enable">
    <INPUT TYPE="submit" onClick="requestPermissions();" value="Click here to enable orientation events" />
   </DIV>
