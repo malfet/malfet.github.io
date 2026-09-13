@@ -268,11 +268,34 @@ class GLContext {
     };
     this.VERTEX_SHADER = ctx.VERTEX_SHADER;
     this.FRAGMENT_SHADER = ctx.FRAGMENT_SHADER;
+    this._prog = null;
+    this._uniformLocations = {};
   }
 
   getGLContext() {
     if (!this._ctx) throw 'Missing context';
     return this._ctx;
+  }
+
+  useProgram(prog) {
+    this.getGLContext().useProgram(prog);
+    this._prog = prog;
+    this._uniformLocations = {};
+  }
+
+  getProgram() {
+    if (!this._prog) throw 'No program in use';
+    return this._prog;
+  }
+
+  // Neither getParameter nor getUniformLocation is cheap enough to call for
+  // every uniform of every animation frame, the former can even stall the
+  // pipeline waiting for queued up drawing to finish
+  getUniformLocation(name) {
+    if (this._uniformLocations[name] === undefined) {
+      this._uniformLocations[name] = this.getGLContext().getUniformLocation(this.getProgram(), name);
+    }
+    return this._uniformLocations[name];
   }
 
   compileShader(type, source) {
@@ -325,8 +348,7 @@ class GLContext {
 
   setUniformf(name) {
     const glCtx = this.getGLContext();
-    const prog = glCtx.getParameter(glCtx.CURRENT_PROGRAM);
-    const idx = glCtx.getUniformLocation(prog, name);
+    const idx = this.getUniformLocation(name);
     if (arguments.length == 2)
       glCtx.uniform1f(idx, arguments[1]);
     else if (arguments.length == 3)
@@ -341,8 +363,7 @@ class GLContext {
 
   setUniformi(name) {
     const glCtx = this.getGLContext();
-    const prog = glCtx.getParameter(glCtx.CURRENT_PROGRAM);
-    const idx = glCtx.getUniformLocation(prog, name);
+    const idx = this.getUniformLocation(name);
     if (arguments.length == 2)
       glCtx.uniform1i(idx, arguments[1]);
     else if (arguments.length == 3)
@@ -358,8 +379,7 @@ class GLContext {
 
   draw2DArray(type, name, arr) {
     const glCtx = this.getGLContext();
-    const prog = glCtx.getParameter(glCtx.CURRENT_PROGRAM);
-    const idx = glCtx.getAttribLocation(prog, name);
+    const idx = glCtx.getAttribLocation(this.getProgram(), name);
 
     var buf = glCtx.createBuffer();
     glCtx.bindBuffer(glCtx.ARRAY_BUFFER, buf);
@@ -373,6 +393,8 @@ class GLContext {
   }
 }
 
+// Has to match numObjects in the shader
+const NUM_OBJECTS = 71;
 // Observer position, [altitude,azimuth] view angles in degrees and focal scale,
 // straight out of robot.dat of the original raytracer
 const OBSERVER = [-10, -4, 5.5];
@@ -384,7 +406,7 @@ class RayTracerScene {
   constructor(canvas) {
     const ctx = new GLContext(canvas);
     const prog = ctx.linkProgram(['passThruVS', 'rayTracingFS'].map(_ => ctx.compileShaderById(_)));
-    ctx.getGLContext().useProgram(prog);
+    ctx.useProgram(prog);
 
     this.ctx = ctx;
     this.aspect = canvas.clientWidth/canvas.clientHeight;
@@ -398,8 +420,28 @@ class RayTracerScene {
                    0.0, 0.0, 1.0, 3.0,
                    0.1, 0.5, 0.4, 0.4);
 
-    // Juggler spheres from http://www.etwright.org/cghist/rt2.js
-    var spheres = [
+    this.firstSphereIdx = this.objIdx;
+    // Upload colors and materials once, only positions change while juggling
+    const numObjects = this.eachSphere((idx, pos, radius, color, mat) => {
+      this.setSphere(idx, pos, radius);
+      this.setColor(idx, color[0], color[1], color[2], 0.0);
+      this.setMaterialProps(idx, mat[0], mat[1], mat[2], mat[3]);
+    });
+    // numObjects is baked into the shader, so the skeleton can not change shape
+    if (numObjects != NUM_OBJECTS) {
+      throw 'Skeleton has ' + numObjects + ' objects, but shader expects ' + NUM_OBJECTS;
+    }
+
+    // Lights
+    ctx.setUniformf('lights[0].location', 50, 150, -100);
+    ctx.setUniformf('lights[0].color', 1, 1, 1);
+    ctx.setUniformf('lights[0].attenuation', 190);
+
+  }
+
+  // Juggler spheres from http://www.etwright.org/cghist/rt2.js
+  skeleton() {
+    return [
      {color: [0.9,0.9,0.9], pos: [-0.9,-2.1,5.3], radius: 0.6, type: 2},
      {color: [0.9,0.9,0.9], pos: [-1.1,1.9,5.9], radius: 0.6, type: 2},
      {color: [0.9,0.9,0.9], pos: [-0.4,-1.2,6.8], radius: 0.6, type: 2},
@@ -434,15 +476,19 @@ class RayTracerScene {
      ]},
 
     ];
-    spheres.forEach(function(sphere) {
+  }
+
+  // Walks the skeleton in a fixed order, so that object indices are stable, and
+  // returns how many objects it covered
+  eachSphere(callback) {
+    var idx = this.firstSphereIdx;
+    this.skeleton().forEach(function(sphere) {
       let color = sphere['color'];
       var pos = sphere['pos'];
       var radius = sphere['radius'];
       let matType = sphere['type'];
       let mat = matType === 2 ? [ .1, .4, .8, .9] : [ .4, .6, .4, .0];
-      this.addObject(pos[1], pos[2], pos[0], radius,
-                color[0], color[1], color[2], 0.0,
-                mat[0], mat[1], mat[2], mat[3]);
+      callback(idx++, pos, radius, color, mat);
       if (!('strips' in sphere)) {
         return;
       }
@@ -454,25 +500,14 @@ class RayTracerScene {
         let pos_step = [(tgt_pos[0]-pos[0])/count, (tgt_pos[1]-pos[1])/count, (tgt_pos[2]-pos[2])/count];
 
         for(var i = 1; i <= count; ++i) {
-          let x = pos[1] + i * pos_step[1];
-          let y = pos[2] + i * pos_step[2];
-          let z = pos[0] + i * pos_step[0];
-          let r = radius + i * rad_step;
-          this.addObject(x, y, z, r,
-                    color[0], color[1], color[2], 0.0,
-                    mat[0], mat[1], mat[2], mat[3]);
+          callback(idx++, [pos[0] + i * pos_step[0], pos[1] + i * pos_step[1], pos[2] + i * pos_step[2]],
+                   radius + i * rad_step, color, mat);
         }
         pos = tgt_pos;
         radius = tgt_radius;
       }, this);
     }, this);
-
-
-    // Lights
-    ctx.setUniformf('lights[0].location', 50, 150, -100);
-    ctx.setUniformf('lights[0].color', 1, 1, 1);
-    ctx.setUniformf('lights[0].attenuation', 190);
-
+    return idx;
   }
 
   render(x0 = -1.0, y0 = -1.0, x1 = 1.0, y1 = 1.0) {
@@ -529,6 +564,11 @@ class RayTracerScene {
     this.ctx.setUniformf('camera.vx', this.aspect*mat[0], this.aspect*mat[3], this.aspect*mat[6]);
     this.ctx.setUniformf('camera.vy', mat[1], mat[4], mat[7]);
     this.ctx.setUniformf('camera.vz', mat[2], mat[5], mat[8]);
+  }
+
+  // Scene data is [depth, lateral, height], but the shader wants x, y, z
+  setSphere(idx, pos, radius) {
+    this.ctx.setUniformf('objects['+idx+'].quat', pos[1], pos[2], pos[0], radius);
   }
 
   addObject(x,y,z,w,r,g,b,t,amb,diff,spec,refl) {
