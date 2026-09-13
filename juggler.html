@@ -393,14 +393,68 @@ class GLContext {
   }
 }
 
+// Juggling pattern, positions are [depth, lateral, height] like the scene data
+// below. Hands throw in turn every beat, a ball flies for two beats and is then
+// carried for one, which keeps two balls in the air and one in a hand
 // Has to match numObjects in the shader
 const NUM_OBJECTS = 71;
+const BEAT_MSEC = 420;
+const BALL_APEX = 1.8;
+const BALL_LIFT = 0.55;
+const HAND_DIP = 0.35;
+const HAND_LIFT = 0.15;
+const BODY_DIP = 0.14;
 // Observer position, [altitude,azimuth] view angles in degrees and focal scale,
 // straight out of robot.dat of the original raytracer
 const OBSERVER = [-10, -4, 5.5];
 const VIEW_ALT = -10;
 const VIEW_AZ = 20;
 const FOCAL_SCALE = 35;
+const HANDS = [
+  // Right hand, then left one
+  {catchPos: [-1.1, -2.35, 4.15], throwPos: [-1.1, -1.65, 4.15]},
+  {catchPos: [-1.0,  2.25, 4.80], throwPos: [-1.0,  1.55, 4.80]},
+];
+
+function lerp3(a, b, u) {
+  return [a[0] + (b[0]-a[0])*u, a[1] + (b[1]-a[1])*u, a[2] + (b[2]-a[2])*u];
+}
+
+// Hand carrying a ball dips as it scoops from where it caught to where it throws
+function scoopPos(hand, u) {
+  var rc = lerp3(hand.catchPos, hand.throwPos, u);
+  rc[2] -= HAND_DIP * Math.sin(Math.PI * u);
+  return rc;
+}
+
+// Empty hand swings back out to meet the next ball
+function reachPos(hand, u) {
+  var rc = lerp3(hand.throwPos, hand.catchPos, u);
+  rc[2] += HAND_LIFT * Math.sin(Math.PI * u);
+  return rc;
+}
+
+// Hand idx throws on every other beat, starting with the right one
+function handPos(idx, beat) {
+  const phase = beat - 2.0*Math.floor((beat - idx)/2.0) - idx;
+  return phase < 1.0 ? reachPos(HANDS[idx], phase) : scoopPos(HANDS[idx], phase - 1.0);
+}
+
+// Ball idx is thrown every third beat, alternating hands as 3 is odd
+function ballPos(idx, beat) {
+  const throwNum = Math.floor((beat - idx)/3.0);
+  const phase = beat - idx - 3.0*throwNum;
+  const from = (idx + throwNum) & 1 ? 1 : 0;
+  if (phase >= 2.0) {
+    var held = scoopPos(HANDS[1 - from], phase - 2.0);
+    held[2] += BALL_LIFT;
+    return held;
+  }
+  const u = 0.5*phase;
+  var rc = lerp3(HANDS[from].throwPos, HANDS[1 - from].catchPos, u);
+  rc[2] += BALL_LIFT + BALL_APEX * 4.0*u*(1.0 - u);
+  return rc;
+}
 
 class RayTracerScene {
   constructor(canvas) {
@@ -422,7 +476,7 @@ class RayTracerScene {
 
     this.firstSphereIdx = this.objIdx;
     // Upload colors and materials once, only positions change while juggling
-    const numObjects = this.eachSphere((idx, pos, radius, color, mat) => {
+    const numObjects = this.eachSphere(0, (idx, pos, radius, color, mat) => {
       this.setSphere(idx, pos, radius);
       this.setColor(idx, color[0], color[1], color[2], 0.0);
       this.setMaterialProps(idx, mat[0], mat[1], mat[2], mat[3]);
@@ -439,50 +493,55 @@ class RayTracerScene {
 
   }
 
-  // Juggler spheres from http://www.etwright.org/cghist/rt2.js
-  skeleton() {
+  // Juggler spheres from http://www.etwright.org/cghist/rt2.js, with the balls
+  // and the hands placed by the juggling pattern at the given beat
+  skeletonAt(beat) {
+    // Knees flex once per beat, which sinks everything above the hips while the
+    // feet stay planted and pushes the knees forward to take up the slack
+    const dip = BODY_DIP * (1.0 - Math.cos(2.0*Math.PI*beat))/2.0;
+    const knee = 1.5*dip;
     return [
-     {color: [0.9,0.9,0.9], pos: [-0.9,-2.1,5.3], radius: 0.6, type: 2},
-     {color: [0.9,0.9,0.9], pos: [-1.1,1.9,5.9], radius: 0.6, type: 2},
-     {color: [0.9,0.9,0.9], pos: [-0.4,-1.2,6.8], radius: 0.6, type: 2},
-     {color: [1,0.7,0.7], pos: [0.0, 0.0, 6.1], radius: 0.5, type: 1},
-     {color: [0.2,0.1,0.1], pos: [0.02, 0.0, 6.12], radius: 0.5, type: 1},
-     {color: [0.1,0.1,1], pos: [-0.4, 0.2, 6.1], radius: 0.15, type: 1},
-     {color: [0.1,0.1,1], pos: [-0.4, -0.2, 6.1], radius: 0.15, type: 1},
-     {color: [1,0.7,0.7], pos: [0.0, 0.0, 5.5], radius: 0.2, type: 1},
+     {color: [0.9,0.9,0.9], pos: ballPos(0, beat), radius: 0.6, type: 2},
+     {color: [0.9,0.9,0.9], pos: ballPos(1, beat), radius: 0.6, type: 2},
+     {color: [0.9,0.9,0.9], pos: ballPos(2, beat), radius: 0.6, type: 2},
+     {color: [1,0.7,0.7], pos: [0.0, 0.0, 6.1-dip], radius: 0.5, type: 1},
+     {color: [0.2,0.1,0.1], pos: [0.02, 0.0, 6.12-dip], radius: 0.5, type: 1},
+     {color: [0.1,0.1,1], pos: [-0.4, 0.2, 6.1-dip], radius: 0.15, type: 1},
+     {color: [0.1,0.1,1], pos: [-0.4, -0.2, 6.1-dip], radius: 0.15, type: 1},
+     {color: [1,0.7,0.7], pos: [0.0, 0.0, 5.5-dip], radius: 0.2, type: 1},
 
-     {color: [1,0.1,0.1], type: 1, pos: [0,0,4.6], radius: 0.8, strips: [
-       {pos: [0,0,3.3], radius: 0.6, count: 5},
+     {color: [1,0.1,0.1], type: 1, pos: [0,0,4.6-dip], radius: 0.8, strips: [
+       {pos: [0,0,3.3-dip], radius: 0.6, count: 5},
      ]},
      // Left leg
-     {color: [1,0.7,0.7], type: 1, pos: [0,0.6,2.9], radius: 0.2, strips: [
-       {pos: [-0.6,0.6,1.6], radius: 0.2, count: 6},
+     {color: [1,0.7,0.7], type: 1, pos: [0,0.6,2.9-dip], radius: 0.2, strips: [
+       {pos: [-0.6-knee,0.6,1.6-0.5*dip], radius: 0.2, count: 6},
        {pos: [-0.4,0.6,0],  radius: 0.1, count: 7},
      ]},
      // Right leg
-     {color: [1,0.7,0.7], type: 1, pos: [0,-0.6,2.9], radius: 0.2, strips: [
-      {pos: [0.2,-0.6,1.6], radius: 0.2, count: 6},
+     {color: [1,0.7,0.7], type: 1, pos: [0,-0.6,2.9-dip], radius: 0.2, strips: [
+      {pos: [0.2-knee,-0.6,1.6-0.5*dip], radius: 0.2, count: 6},
       {pos: [0.4,-0.6,0], radius: 0.1, count: 7},
      ]},
      // Right arm
-     {color: [1,0.7,0.7], type: 1, pos: [0,-0.7,5.1], radius: 0.2, strips: [
-       {pos: [-0.2,-1.2,4.2], radius: 0.2, count: 6},
-       {pos: [-1.1,-2,4.1], radius: 0.1, count: 7},
+     {color: [1,0.7,0.7], type: 1, pos: [0,-0.7,5.1-dip], radius: 0.2, strips: [
+       {pos: [-0.2,-1.2,4.2-dip], radius: 0.2, count: 6},
+       {pos: handPos(0, beat), radius: 0.1, count: 7},
      ]},
      // Left arm
-     {color: [1,0.7,0.7], type: 1, pos: [0,0.7,5.1], radius: 0.2, strips: [
-       {pos: [-0.2,1.2,4.2], radius: 0.2, count: 6},
-       {pos: [-1.0,1.9,4.8], radius: 0.1, count: 7},
+     {color: [1,0.7,0.7], type: 1, pos: [0,0.7,5.1-dip], radius: 0.2, strips: [
+       {pos: [-0.2,1.2,4.2-dip], radius: 0.2, count: 6},
+       {pos: handPos(1, beat), radius: 0.1, count: 7},
      ]},
 
     ];
   }
 
-  // Walks the skeleton in a fixed order, so that object indices are stable, and
-  // returns how many objects it covered
-  eachSphere(callback) {
+  // Walks the skeleton in a fixed order so that object indices are stable from
+  // one frame to the next, and returns how many objects it covered
+  eachSphere(beat, callback) {
     var idx = this.firstSphereIdx;
-    this.skeleton().forEach(function(sphere) {
+    this.skeletonAt(beat).forEach(function(sphere) {
       let color = sphere['color'];
       var pos = sphere['pos'];
       var radius = sphere['radius'];
@@ -508,6 +567,16 @@ class RayTracerScene {
       }, this);
     }, this);
     return idx;
+  }
+
+  // Re-place every sphere for the given beat, colors and materials do not move
+  poseAt(beat) {
+    this.eachSphere(beat, (idx, pos, radius) => this.setSphere(idx, pos, radius));
+  }
+
+  animate(t) {
+    this.poseAt(t/BEAT_MSEC);
+    this.requestRender();
   }
 
   render(x0 = -1.0, y0 = -1.0, x1 = 1.0, y1 = 1.0) {
@@ -631,12 +700,16 @@ function displayClickToEnable() {
 function benchmarkSingleFrame(canvas, setupTime) {
   const glCtx = scene.ctx.getGLContext();
   const pixel = new Uint8Array(4);
+  const poseStartTime = performance.now();
+  scene.poseAt(0.7);
+  const poseTime = performance.now() - poseStartTime;
   const startTime = performance.now();
   scene.render();
   glCtx.readPixels(0, 0, 1, 1, glCtx.RGBA, glCtx.UNSIGNED_BYTE, pixel);
   const renderTime = performance.now() - startTime;
   const status = glCtx.isContextLost() ? 'context lost' : 'glGetError ' + glCtx.getError();
   const msg = canvas.width + 'x' + canvas.height + ': setup ' + setupTime.toFixed(1)
+            + ' msec, pose ' + poseTime.toFixed(2)
             + ' msec, single frame ' + renderTime.toFixed(1) + ' msec (' + status + ')';
   console.log(msg);
   document.getElementById('benchmark-result').textContent = msg;
@@ -670,6 +743,11 @@ function configureTracer() {
       }
       displayClickToEnable();
     }, 1500);
+    const animationLoop = (t) => {
+      scene.animate(t);
+      window.requestAnimationFrame(animationLoop);
+    };
+    window.requestAnimationFrame(animationLoop);
   } catch (e) {
     alert('Inialization failed: ' + e);
     return;
