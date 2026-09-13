@@ -4,8 +4,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <script type="x-shader/x-vertex" id="passThruVS">
-attribute vec2 coord;
-varying vec2 pos;
+#version 300 es
+in vec2 coord;
+out vec2 pos;
 void main(void) {
   pos = coord;
   gl_Position = vec4(coord, 0, 1.0);
@@ -14,8 +15,10 @@ void main(void) {
 </script>
 
 <script type="x-shader/x-fragment" id="rayTracingFS">
+#version 300 es
 precision highp float;
-varying vec2 pos;
+in vec2 pos;
+out vec4 fragColor;
 
 const float THRESHOLD = 1e-1;
 // Checkerboard tiles are 3 units wide, as they were in the original raytracer
@@ -79,8 +82,11 @@ bool ObjectIntersect(in Object obj, in Ray ray, out float distance) {
 // Scene defenition
 
 const int numLights = 1;
-const int numObjects = 71;
-uniform Object objects[numObjects];
+const int maxObjects = 71;
+// Loop bound has to be a uniform, or the shader compiler unrolls every loop over
+// the objects and takes tens of seconds to build the result
+uniform int objectCount;
+uniform Object objects[maxObjects];
 uniform PointLight lights[numLights];
 uniform Camera camera;
 
@@ -93,7 +99,7 @@ struct SurfaceProps {
 };
 
 bool Scene_Intersects(in Ray ray) {
-    for(int idx = 0; idx < numObjects; ++idx) {
+    for(int idx = 0; idx < objectCount; ++idx) {
       float d;
       if (ObjectIntersect(objects[idx], ray, d)) {
         return true;
@@ -105,7 +111,7 @@ bool Scene_Intersects(in Ray ray) {
 int Scene_Intersect(in Ray ray, out SurfaceProps props) {
   float bestDistance = 1e6;
   int bestIdx = -1;
-  for(int idx = 0; idx < numObjects; ++idx) {
+  for(int idx = 0; idx < objectCount; ++idx) {
     float d;
     if (ObjectIntersect(objects[idx], ray, d)) {
       if (d < bestDistance) {
@@ -116,37 +122,36 @@ int Scene_Intersect(in Ray ray, out SurfaceProps props) {
   }
   if (bestIdx < 0) return bestIdx;
   props.point = ray.origin + bestDistance * ray.dir;
-  for(int idx = 0; idx < numObjects; ++idx) {
-    if (idx != bestIdx) continue;
+  // A uniform array can be indexed by a variable here, no need to loop over all
+  // of them looking for the one that was hit
 
-    if (objects[idx].color_type.w == 0.0 || objects[idx].color_type.w == 2.0) {
-      props.norm = normalize(props.point - objects[idx].quat.xyz);
-    } else {
-      props.norm  = objects[idx].quat.xyz;
+  if (objects[bestIdx].color_type.w == 0.0 || objects[bestIdx].color_type.w == 2.0) {
+    props.norm = normalize(props.point - objects[bestIdx].quat.xyz);
+  } else {
+    props.norm  = objects[bestIdx].quat.xyz;
+  }
+
+  props.color = objects[bestIdx].color_type.xyz;
+  props.ambient = objects[bestIdx].material.x;
+  props.diffuse = objects[bestIdx].material.y;
+  props.specular = objects[bestIdx].material.z;
+  props.reflect = objects[bestIdx].material.w;
+
+  // Checked sphere pattern
+  if (objects[bestIdx].color_type.w == 2.0) {
+    if (mod(floor(atan(props.norm.x/props.norm.z)*4.0),2.0) == 0.0
+    ^^ mod(floor(acos(props.norm.y)*4.0),2.0) == 0.0) {
+      props.color = vec3(1.0)-props.color;
     }
-
-    props.color = objects[idx].color_type.xyz;
-    props.ambient = objects[idx].material.x;
-    props.diffuse = objects[idx].material.y;
-    props.specular = objects[idx].material.z;
-    props.reflect = objects[idx].material.w;
-
-    // Checked sphere pattern
-    if (objects[idx].color_type.w == 2.0) {
-      if (mod(floor(atan(props.norm.x/props.norm.z)*4.0),2.0) == 0.0
-      ^^ mod(floor(acos(props.norm.y)*4.0),2.0) == 0.0) {
-        props.color = vec3(1.0)-props.color;
-      }
-    }
-    // Checked plane pattern
-    if (objects[idx].color_type.w == 3.0) {
-      vec3 px = props.norm.z == 0.0 ? vec3(-props.norm.y, props.norm.x, 0.0) : normalize(cross(props.norm, vec3(1.0,0,0)));
-      vec3 py = cross(px,props.norm);
-      vec3 origin =  -objects[idx].quat.w*objects[idx].quat.xyz;
-      vec3 offs = props.point - origin;
-      if (mod(floor(dot(offs,px)/TILE_SIZE),2.0) == 0.0 ^^ mod(floor(dot(offs,py)/TILE_SIZE),2.0) == 0.0) {
-        props.color = vec3(1.0)-props.color;
-      }
+  }
+  // Checked plane pattern
+  if (objects[bestIdx].color_type.w == 3.0) {
+    vec3 px = props.norm.z == 0.0 ? vec3(-props.norm.y, props.norm.x, 0.0) : normalize(cross(props.norm, vec3(1.0,0,0)));
+    vec3 py = cross(px,props.norm);
+    vec3 origin =  -objects[bestIdx].quat.w*objects[bestIdx].quat.xyz;
+    vec3 offs = props.point - origin;
+    if (mod(floor(dot(offs,px)/TILE_SIZE),2.0) == 0.0 ^^ mod(floor(dot(offs,py)/TILE_SIZE),2.0) == 0.0) {
+      props.color = vec3(1.0)-props.color;
     }
   }
   return bestIdx;
@@ -191,7 +196,7 @@ void main(void) {
     ray.origin = props.point;
   }
 
-  gl_FragColor = vec4(color, 1.0);
+  fragColor = vec4(color, 1.0);
 }
 </script>
 
@@ -250,7 +255,7 @@ class GLContext {
   constructor(canvas) {
     if (canvas == null)
       throw 'Can not find canvas';
-    const ctx = canvas.getContext('webgl');
+    const ctx = canvas.getContext('webgl2');
     if (ctx == null)
       throw 'Can not get WebGL context...';
     if (ctx.isContextLost())
@@ -320,7 +325,9 @@ class GLContext {
   compileShaderById(id) {
     const glCtx = this.getGLContext();
     const element = this.getElementById(id);
-    const source = element.innerHTML;
+    // #version has to be the very first thing in the shader, so drop the
+    // newline that follows the opening script tag
+    const source = element.innerHTML.trim();
     if (element.type === 'x-shader/x-vertex') {
       return this.compileShader(glCtx.VERTEX_SHADER, source);
     }
@@ -396,8 +403,8 @@ class GLContext {
 // Juggling pattern, positions are [depth, lateral, height] like the scene data
 // below. Hands throw in turn every beat, a ball flies for two beats and is then
 // carried for one, which keeps two balls in the air and one in a hand
-// Has to match numObjects in the shader
-const NUM_OBJECTS = 71;
+// Has to match maxObjects in the shader
+const MAX_OBJECTS = 71;
 const BEAT_MSEC = 420;
 const BALL_APEX = 1.8;
 const BALL_LIFT = 0.55;
@@ -476,15 +483,16 @@ class RayTracerScene {
 
     this.firstSphereIdx = this.objIdx;
     // Upload colors and materials once, only positions change while juggling
-    const numObjects = this.eachSphere(0, (idx, pos, radius, color, mat) => {
+    const objectCount = this.eachSphere(0, (idx, pos, radius, color, mat) => {
       this.setSphere(idx, pos, radius);
       this.setColor(idx, color[0], color[1], color[2], 0.0);
       this.setMaterialProps(idx, mat[0], mat[1], mat[2], mat[3]);
     });
-    // numObjects is baked into the shader, so the skeleton can not change shape
-    if (numObjects != NUM_OBJECTS) {
-      throw 'Skeleton has ' + numObjects + ' objects, but shader expects ' + NUM_OBJECTS;
+    // Only the array capacity is fixed, the skeleton is free to be smaller
+    if (objectCount > MAX_OBJECTS) {
+      throw 'Skeleton has ' + objectCount + ' objects, but shader fits ' + MAX_OBJECTS;
     }
+    ctx.setUniformi('objectCount', objectCount);
 
     // Lights
     ctx.setUniformf('lights[0].location', 50, 150, -100);
@@ -708,7 +716,8 @@ function benchmarkSingleFrame(canvas, setupTime) {
   glCtx.readPixels(0, 0, 1, 1, glCtx.RGBA, glCtx.UNSIGNED_BYTE, pixel);
   const renderTime = performance.now() - startTime;
   const status = glCtx.isContextLost() ? 'context lost' : 'glGetError ' + glCtx.getError();
-  const msg = canvas.width + 'x' + canvas.height + ': setup ' + setupTime.toFixed(1)
+  const msg = glCtx.getParameter(glCtx.VERSION) + '\n'
+            + canvas.width + 'x' + canvas.height + ': setup ' + setupTime.toFixed(1)
             + ' msec, pose ' + poseTime.toFixed(2)
             + ' msec, single frame ' + renderTime.toFixed(1) + ' msec (' + status + ')';
   console.log(msg);
@@ -759,7 +768,7 @@ function configureTracer() {
 </script>
 <body onLoad="configureTracer();">
 <DIV>
-  <H1 style="display:inline">RayTracer as fragment shader</H1>
+  <H1 style="display:inline">Amiga Juggler Ray Traced as WebGL 2.0 fragment shader</H1>
   <SPAN id="benchmark-result"></SPAN>
   <DIV style="display:inline;visibility:hidden" id="click-to-enable">
    <INPUT TYPE="submit" onClick="requestPermissions();" value="Click here to enable orientation events" />
