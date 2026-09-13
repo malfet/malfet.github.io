@@ -178,7 +178,7 @@ void main(void) {
       // Check if light is occluded
       if (Scene_Intersect(lightRay)) continue;
       float attenuation = sqr(lights[idx].attenuation)/dot(lightDir, lightDir);
-      float angle = abs(dot(lightRay.dir, props.norm));
+      float angle = max(dot(lightRay.dir, props.norm), 0.0);
       if (angle < THRESHOLD) continue;
 
       // Add diffuse light component
@@ -187,7 +187,7 @@ void main(void) {
       // Add specular light component using Blinn–Phong reflection mode
       if (props.specular >= THRESHOLD) {
         vec3 halfway = normalize(lightRay.dir - ray.dir);
-        color += weight*props.specular*attenuation*pow(dot(halfway, props.norm), 30.0)*lights[idx].color;
+        color += weight*props.specular*attenuation*pow(max(dot(halfway, props.norm), 0.0), 30.0)*lights[idx].color;
       }
     }
     if (weight * props.reflect < THRESHOLD) {
