@@ -201,55 +201,6 @@ void main(void) {
 </script>
 
 <script type="text/javascript">
-function rotateX(angle) {
-  const cos = Math.cos(angle);
-  const sin = Math.sin(angle);
-  return [
-    1,    0,    0,
-    0,  cos, -sin,
-    0,  sin,  cos,
-  ];
-}
-
-function rotateY(angle) {
-  const cos = Math.cos(angle);
-  const sin = Math.sin(angle);
-  return [
-    cos,    0,  sin,
-      0,    1,    0,
-   -sin,    0,  cos,
-  ];
-}
-
-function rotateZ(angle) {
-  const cos = Math.cos(angle);
-  const sin = Math.sin(angle);
-  return [
-    cos, -sin,  0,
-    sin,  cos,  0,
-      0,    0,  1,
-  ];
-}
-
-function mulMatVec(mat, vec) {
-  return [
-    vec[0]*mat[0] + vec[1]*mat[1] + vec[2]*mat[2],
-    vec[0]*mat[3] + vec[1]*mat[4] + vec[2]*mat[5],
-    vec[0]*mat[6] + vec[1]*mat[7] + vec[2]*mat[8],
-  ];
-}
-
-function mulMatMat(mata, matb) {
-  const c1 = mulMatVec(mata, [matb[0], matb[3], matb[6]])
-  const c2 = mulMatVec(mata, [matb[1], matb[4], matb[7]])
-  const c3 = mulMatVec(mata, [matb[2], matb[5], matb[8]])
-  return [
-    c1[0], c2[0], c3[0],
-    c1[1], c2[1], c3[1],
-    c1[2], c2[2], c3[2],
-  ];
-}
-
 
 class GLContext {
   constructor(canvas) {
@@ -627,20 +578,6 @@ class RayTracerScene {
     this.ctx.setUniformf('camera.vx', su*uhat[1], su*uhat[2], su*uhat[0]);
     this.ctx.setUniformf('camera.vy', scale*vhat[1], scale*vhat[2], scale*vhat[0]);
     this.ctx.setUniformf('camera.vz', viewdir[1], viewdir[2], viewdir[0]);
-  }
-
-  setCamera(x=0, y=0, z=-1) {
-    this.ctx.setUniformf('camera.location', x, y, z);
-    this.ctx.setUniformf('camera.vx', this.aspect, 0, 0);
-    this.ctx.setUniformf('camera.vy', 0, 1, 0);
-    this.ctx.setUniformf('camera.vz', 0, 0, 1);
-  }
-
-  setCameraRotation(longitude, latitude, spin) {
-    var mat = mulMatMat(rotateY(-latitude), rotateX(longitude));
-    this.ctx.setUniformf('camera.vx', this.aspect*mat[0], this.aspect*mat[3], this.aspect*mat[6]);
-    this.ctx.setUniformf('camera.vy', mat[1], mat[4], mat[7]);
-    this.ctx.setUniformf('camera.vz', mat[2], mat[5], mat[8]);
   }
 
   // Scene data is [depth, lateral, height], but the shader wants x, y, z
