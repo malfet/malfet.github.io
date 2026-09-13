@@ -18,6 +18,8 @@ precision highp float;
 varying vec2 pos;
 
 const float THRESHOLD = 1e-1;
+// Checkerboard tiles are 3 units wide, as they were in the original raytracer
+const float TILE_SIZE = 3.0;
 
 
 struct PointLight {
@@ -142,7 +144,7 @@ int Scene_Intersect(in Ray ray, out SurfaceProps props) {
       vec3 py = cross(px,props.norm);
       vec3 origin =  -objects[idx].quat.w*objects[idx].quat.xyz;
       vec3 offs = props.point - origin;
-      if (mod(floor(dot(offs,px)),2.0) == 0.0 ^^ mod(floor(dot(offs,py)),2.0) == 0.0) {
+      if (mod(floor(dot(offs,px)/TILE_SIZE),2.0) == 0.0 ^^ mod(floor(dot(offs,py)/TILE_SIZE),2.0) == 0.0) {
         props.color = vec3(1.0)-props.color;
       }
     }
