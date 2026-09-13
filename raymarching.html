@@ -18,7 +18,7 @@ precision highp float;
 varying vec2 pos;
 
 const float THRESHOLD = 1e-2;
-const int MAX_STEP = 100;
+const int MAX_STEP = 200;
 
 struct PointLight {
   vec3 location;
@@ -70,7 +70,10 @@ float sphereSDF(vec3 p) {
 float bumpySphereSDF(vec3 p) {
    const float freq = 5.5;
    const float amp = .4;
-   return length(p) - 1.0 - amp * sin(freq * p.x)*sin(freq * p.y)*sin(freq * p.z);
+   // Bumps make the gradient steeper than 1, so scale distance down to keep it
+   // a lower bound, otherwise marching overshoots the surface and leaves holes
+   const float lipschitz = 1.0 + amp * freq;
+   return (length(p) - 1.0 - amp * sin(freq * p.x)*sin(freq * p.y)*sin(freq * p.z)) / lipschitz;
 }
 
 float planeSDF(vec3 p) {
